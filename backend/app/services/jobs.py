@@ -30,31 +30,33 @@ def enqueue_job(
     return job
 
 
-def claim_next_job(db: Session) -> Job | None:
-    candidate_id = db.scalar(
-        select(Job.id)
-        .where(Job.status == JobStatus.queued, Job.run_after <= now_utc())
-        .order_by(Job.created_at)
-        .limit(1)
-    )
-    if candidate_id is None:
-        return None
-
-    result = db.execute(
-        update(Job)
-        .where(Job.id == candidate_id, Job.status == JobStatus.queued)
-        .values(
-            status=JobStatus.running,
-            attempts=Job.attempts + 1,
-            updated_at=now_utc(),
+def claim_next_job(db: Session, max_attempts: int = 5) -> Job | None:
+    for _ in range(max_attempts):
+        candidate_id = db.scalar(
+            select(Job.id)
+            .where(Job.status == JobStatus.queued, Job.run_after <= now_utc())
+            .order_by(Job.created_at)
+            .limit(1)
         )
-    )
-    if result.rowcount != 1:
-        db.rollback()
-        return None
+        if candidate_id is None:
+            return None
 
-    db.commit()
-    return db.get(Job, candidate_id)
+        result = db.execute(
+            update(Job)
+            .where(Job.id == candidate_id, Job.status == JobStatus.queued)
+            .values(
+                status=JobStatus.running,
+                attempts=Job.attempts + 1,
+                updated_at=now_utc(),
+            )
+        )
+        if result.rowcount == 1:
+            db.commit()
+            return db.get(Job, candidate_id)
+
+        db.rollback()
+
+    return None
 
 
 def complete_job(db: Session, job: Job) -> Job:

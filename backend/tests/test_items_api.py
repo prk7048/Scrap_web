@@ -133,3 +133,40 @@ def test_claim_next_job_marks_one_queued_job_running(tmp_path, monkeypatch):
     assert first.status == JobStatus.running
     assert first.attempts == 1
     assert second is None
+
+
+def test_claim_next_job_continues_when_first_candidate_is_lost(tmp_path, monkeypatch):
+    _, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Job, JobStatus
+    from app.services.jobs import claim_next_job, enqueue_job
+
+    with TestingSession() as setup_session:
+        lost = enqueue_job(setup_session, "capture_item")
+        next_job = enqueue_job(setup_session, "capture_item")
+        lost_id = lost.id
+        next_id = next_job.id
+
+    with TestingSession() as session:
+        original_execute = session.execute
+        lost_once = False
+
+        def lose_first_candidate(statement, *args, **kwargs):
+            nonlocal lost_once
+            if not lost_once and statement.is_update:
+                lost_once = True
+                with TestingSession() as competing_session:
+                    competing_job = competing_session.get(Job, lost_id)
+                    competing_job.status = JobStatus.running
+                    competing_job.attempts += 1
+                    competing_session.commit()
+            return original_execute(statement, *args, **kwargs)
+
+        monkeypatch.setattr(session, "execute", lose_first_candidate)
+
+        claimed = claim_next_job(session)
+
+    assert claimed is not None
+    assert claimed.id == next_id
+    assert claimed.status == JobStatus.running
+    assert claimed.attempts == 1
