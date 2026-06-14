@@ -1,0 +1,27 @@
+[project]
+name = "personal-web-archive-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic-settings>=2.4.0",
+  "sqlalchemy>=2.0.32",
+  "psycopg[binary]>=3.2.1",
+  "passlib[bcrypt]>=1.7.4",
+  "python-multipart>=0.0.9",
+  "beautifulsoup4>=4.12.3",
+  "readability-lxml>=0.8.1",
+  "playwright>=1.46.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.23.8",
+  "ruff>=0.5.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
