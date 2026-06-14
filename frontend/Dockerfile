@@ -1,11 +1,6 @@
-FROM node:22-alpine
-
+FROM node:22-slim
 WORKDIR /app
-
-COPY package.json ./
+COPY package.json package-lock.json* ./
 RUN npm install
-
-COPY index.html ./
-COPY src ./src
-
+COPY . .
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

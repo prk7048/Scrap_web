@@ -1,13 +1,23 @@
 {
+  "name": "personal-web-archive-frontend",
+  "version": "0.1.0",
+  "type": "module",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^5.1.1",
-    "vite": "^7.3.0",
-    "typescript": "^5.9.3",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0",
+    "typescript": "^5.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.468.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "vitest": "^2.0.5",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0"
+  }
 }
