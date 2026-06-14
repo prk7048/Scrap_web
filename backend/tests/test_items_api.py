@@ -1,0 +1,67 @@
+import importlib
+import sys
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker
+
+
+def make_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_SECRET_KEY", "test-secret-key-value")
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-password")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{tmp_path.as_posix()}/items.sqlite3")
+
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    sys.modules.pop("app.api.auth", None)
+    sys.modules.pop("app.api.items", None)
+    sys.modules.pop("app.main", None)
+    sys.modules.pop("app.db.session", None)
+
+    from app.db.init_db import bootstrap_database
+    from app.db.models import Base
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path.as_posix()}/items.sqlite3", future=True)
+    TestingSession = sessionmaker(bind=engine, future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        bootstrap_database(session, "admin@example.com", "secret-password")
+
+    session_module = importlib.import_module("app.db.session")
+    main = importlib.import_module("app.main")
+
+    def override_db():
+        with TestingSession() as session:
+            yield session
+
+    app = main.create_app()
+    app.dependency_overrides[session_module.get_db] = override_db
+    client = TestClient(app)
+    client.post("/api/auth/login", json={"email": "admin@example.com", "password": "secret-password"})
+    return client, TestingSession
+
+
+def test_save_url_creates_item_and_capture_job(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+    response = client.post("/api/items/save", json={"url": "https://example.com/a?utm_source=x"})
+    assert response.status_code == 201
+
+    from app.db.models import Item, Job
+
+    with TestingSession() as session:
+        item = session.scalar(select(Item))
+        job = session.scalar(select(Job))
+
+    assert item.normalized_url == "https://example.com/a"
+    assert job.job_type == "capture_item"
+    assert job.item_id == item.id
+
+
+def test_save_duplicate_returns_existing_item(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    first = client.post("/api/items/save", json={"url": "https://example.com/a"}).json()
+    second_response = client.post("/api/items/save", json={"url": "https://example.com/a?utm_campaign=x"})
+    assert second_response.status_code == 200
+    assert second_response.json()["id"] == first["id"]
