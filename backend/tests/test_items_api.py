@@ -1,5 +1,6 @@
 import importlib
 import sys
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -11,6 +12,7 @@ def make_client(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_EMAIL", "admin@example.com")
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-password")
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{tmp_path.as_posix()}/items.sqlite3")
+    monkeypatch.setenv("DATA_DIR", (tmp_path / "data").as_posix())
 
     from app.core.config import get_settings
 
@@ -65,6 +67,189 @@ def test_save_duplicate_returns_existing_item(tmp_path, monkeypatch):
     second_response = client.post("/api/items/save", json={"url": "https://example.com/a?utm_campaign=x"})
     assert second_response.status_code == 200
     assert second_response.json()["id"] == first["id"]
+
+
+def test_get_item_detail_includes_body_text_and_artifacts(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Artifact, ArtifactType, Item, ItemStatus
+
+    with TestingSession() as session:
+        item = Item(
+            original_url="https://example.com/article?utm_source=x",
+            normalized_url="https://example.com/article",
+            source_domain="example.com",
+            title="Readable Article",
+            description="A compact archive entry",
+            body_text="Full readable body",
+            ai_summary="Short summary",
+            ai_recommendation_reason="Useful later",
+            status=ItemStatus.preserved,
+            classification_status="complete",
+        )
+        session.add(item)
+        session.flush()
+        artifact = Artifact(
+            item_id=item.id,
+            artifact_type=ArtifactType.html,
+            path=str(Path("items") / item.id / "snapshot.html"),
+            mime_type="text/html",
+        )
+        session.add(artifact)
+        session.commit()
+        item_id = item.id
+        artifact_id = artifact.id
+
+    response = client.get(f"/api/items/{item_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == item_id
+    assert data["body_text"] == "Full readable body"
+    assert data["ai_summary"] == "Short summary"
+    assert data["ai_recommendation_reason"] == "Useful later"
+    assert data["artifacts"] == [
+        {
+            "id": artifact_id,
+            "type": "html",
+            "path": f"items/{item_id}/snapshot.html",
+            "mime_type": "text/html",
+            "created_at": data["artifacts"][0]["created_at"],
+        }
+    ]
+
+
+def test_get_item_artifact_returns_file(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Artifact, ArtifactType, Item, ItemStatus
+
+    data_dir = tmp_path / "data"
+    with TestingSession() as session:
+        item = Item(
+            original_url="https://example.com/article",
+            normalized_url="https://example.com/article",
+            source_domain="example.com",
+            status=ItemStatus.preserved,
+        )
+        session.add(item)
+        session.flush()
+        relative_path = Path("items") / item.id / "snapshot.html"
+        artifact_path = data_dir / relative_path
+        artifact_path.parent.mkdir(parents=True)
+        artifact_path.write_text("<html><body>Saved</body></html>", encoding="utf-8")
+        artifact = Artifact(
+            item_id=item.id,
+            artifact_type=ArtifactType.html,
+            path=str(relative_path),
+            mime_type="text/html",
+        )
+        session.add(artifact)
+        session.commit()
+        item_id = item.id
+        artifact_id = artifact.id
+
+    response = client.get(f"/api/items/{item_id}/artifacts/{artifact_id}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.text == "<html><body>Saved</body></html>"
+
+
+def test_get_item_artifact_rejects_traversal_path(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Artifact, ArtifactType, Item
+
+    with TestingSession() as session:
+        item = Item(
+            original_url="https://example.com/article",
+            normalized_url="https://example.com/article",
+            source_domain="example.com",
+        )
+        session.add(item)
+        session.flush()
+        artifact = Artifact(
+            item_id=item.id,
+            artifact_type=ArtifactType.html,
+            path=str(Path("..") / "escape.html"),
+            mime_type="text/html",
+        )
+        session.add(artifact)
+        session.commit()
+        item_id = item.id
+        artifact_id = artifact.id
+
+    response = client.get(f"/api/items/{item_id}/artifacts/{artifact_id}")
+
+    assert response.status_code == 400
+
+
+def test_item_detail_and_artifacts_require_authentication(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Artifact, ArtifactType, Item
+
+    with TestingSession() as session:
+        item = Item(
+            original_url="https://example.com/article",
+            normalized_url="https://example.com/article",
+            source_domain="example.com",
+        )
+        session.add(item)
+        session.flush()
+        artifact = Artifact(
+            item_id=item.id,
+            artifact_type=ArtifactType.html,
+            path=str(Path("items") / item.id / "snapshot.html"),
+            mime_type="text/html",
+        )
+        session.add(artifact)
+        session.commit()
+        item_id = item.id
+        artifact_id = artifact.id
+
+    client.cookies.clear()
+
+    detail_response = client.get(f"/api/items/{item_id}")
+    artifact_response = client.get(f"/api/items/{item_id}/artifacts/{artifact_id}")
+
+    assert detail_response.status_code == 401
+    assert artifact_response.status_code == 401
+
+
+def test_get_item_artifact_returns_404_for_another_items_artifact(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Artifact, ArtifactType, Item
+
+    with TestingSession() as session:
+        first = Item(
+            original_url="https://example.com/first",
+            normalized_url="https://example.com/first",
+            source_domain="example.com",
+        )
+        second = Item(
+            original_url="https://example.com/second",
+            normalized_url="https://example.com/second",
+            source_domain="example.com",
+        )
+        session.add_all([first, second])
+        session.flush()
+        second_artifact = Artifact(
+            item_id=second.id,
+            artifact_type=ArtifactType.html,
+            path=str(Path("items") / second.id / "snapshot.html"),
+            mime_type="text/html",
+        )
+        session.add(second_artifact)
+        session.commit()
+        first_id = first.id
+        second_artifact_id = second_artifact.id
+
+    response = client.get(f"/api/items/{first_id}/artifacts/{second_artifact_id}")
+
+    assert response.status_code == 404
 
 
 def test_save_url_rolls_back_item_when_enqueue_fails(tmp_path, monkeypatch):

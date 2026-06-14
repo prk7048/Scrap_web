@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { api } from "../../api/client";
+import ItemDetail from "./ItemDetail";
 
 type Item = {
   id: string;
@@ -26,6 +27,7 @@ type ItemListResponse = {
 
 export default function ItemList({ topic, query = "", refreshKey }: ItemListProps) {
   const [items, setItems] = useState<Item[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -56,6 +58,10 @@ export default function ItemList({ topic, query = "", refreshKey }: ItemListProp
     };
   }, [topic, query, refreshKey]);
 
+  if (selectedItemId) {
+    return <ItemDetail itemId={selectedItemId} onBack={() => setSelectedItemId(null)} />;
+  }
+
   return (
     <div className="view-stack">
       <div className="view-heading">
@@ -81,7 +87,9 @@ export default function ItemList({ topic, query = "", refreshKey }: ItemListProp
               <span>{item.domain ?? item.source_domain ?? "Unknown domain"}</span>
               <span className={`status-pill status-${item.status ?? "unknown"}`}>{item.status ?? "unknown"}</span>
             </div>
-            <h2>{item.title ?? item.normalized_url ?? item.original_url ?? item.url}</h2>
+            <button className="item-title-button" onClick={() => setSelectedItemId(item.id)} type="button">
+              {item.title ?? item.normalized_url ?? item.original_url ?? item.url}
+            </button>
             <a
               className="external-link"
               href={item.original_url ?? item.normalized_url ?? item.url ?? "#"}
