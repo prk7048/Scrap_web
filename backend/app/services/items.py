@@ -1,4 +1,5 @@
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Item, ItemStatus
@@ -12,17 +13,28 @@ def save_url(db: Session, url: str) -> tuple[Item, bool]:
     if existing is not None:
         return existing, False
 
-    item = Item(
-        original_url=normalized.original,
-        normalized_url=normalized.normalized,
-        source_domain=normalized.domain,
-        status=ItemStatus.queued,
-    )
-    db.add(item)
-    db.commit()
-    db.refresh(item)
-    enqueue_job(db, "capture_item", item_id=item.id, payload={"item_id": item.id})
-    return item, True
+    try:
+        item = Item(
+            original_url=normalized.original,
+            normalized_url=normalized.normalized,
+            source_domain=normalized.domain,
+            status=ItemStatus.queued,
+        )
+        db.add(item)
+        db.flush()
+        enqueue_job(db, "capture_item", item_id=item.id, payload={"item_id": item.id}, commit=False)
+        db.commit()
+        db.refresh(item)
+        return item, True
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(select(Item).where(Item.normalized_url == normalized.normalized))
+        if existing is None:
+            raise
+        return existing, False
+    except Exception:
+        db.rollback()
+        raise
 
 
 def list_items(db: Session, query: str | None = None, status: ItemStatus | None = None) -> list[Item]:
@@ -46,9 +58,13 @@ def retry_item(db: Session, item_id: str) -> Item:
     if item is None:
         raise ValueError("Item not found")
 
-    item.status = ItemStatus.queued
-    item.failure_reason = None
-    db.commit()
-    db.refresh(item)
-    enqueue_job(db, "capture_item", item_id=item.id, payload={"item_id": item.id})
-    return item
+    try:
+        item.status = ItemStatus.queued
+        item.failure_reason = None
+        enqueue_job(db, "capture_item", item_id=item.id, payload={"item_id": item.id}, commit=False)
+        db.commit()
+        db.refresh(item)
+        return item
+    except Exception:
+        db.rollback()
+        raise

@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import Job, JobStatus, now_utc
@@ -14,6 +14,7 @@ def enqueue_job(
     item_id: str | None = None,
     payload: dict[str, Any] | None = None,
     run_after: datetime | None = None,
+    commit: bool = True,
 ) -> Job:
     job = Job(
         job_type=job_type,
@@ -23,27 +24,37 @@ def enqueue_job(
         status=JobStatus.queued,
     )
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    if commit:
+        db.commit()
+        db.refresh(job)
     return job
 
 
 def claim_next_job(db: Session) -> Job | None:
-    job = db.scalar(
-        select(Job)
+    candidate_id = db.scalar(
+        select(Job.id)
         .where(Job.status == JobStatus.queued, Job.run_after <= now_utc())
         .order_by(Job.created_at)
         .limit(1)
     )
-    if job is None:
+    if candidate_id is None:
         return None
 
-    job.status = JobStatus.running
-    job.attempts += 1
-    job.updated_at = now_utc()
+    result = db.execute(
+        update(Job)
+        .where(Job.id == candidate_id, Job.status == JobStatus.queued)
+        .values(
+            status=JobStatus.running,
+            attempts=Job.attempts + 1,
+            updated_at=now_utc(),
+        )
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        return None
+
     db.commit()
-    db.refresh(job)
-    return job
+    return db.get(Job, candidate_id)
 
 
 def complete_job(db: Session, job: Job) -> Job:

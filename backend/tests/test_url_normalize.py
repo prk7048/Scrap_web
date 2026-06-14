@@ -12,3 +12,9 @@ def test_normalize_youtube_variants():
     second = normalize_url("https://www.youtube.com/watch?v=abc123&utm_source=x")
     assert first.normalized == "https://www.youtube.com/watch?v=abc123"
     assert second.normalized == "https://www.youtube.com/watch?v=abc123"
+
+
+def test_normalize_strips_userinfo():
+    result = normalize_url("https://user:pass@example.com/a")
+    assert result.normalized == "https://example.com/a"
+    assert result.domain == "example.com"

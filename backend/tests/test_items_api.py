@@ -65,3 +65,71 @@ def test_save_duplicate_returns_existing_item(tmp_path, monkeypatch):
     second_response = client.post("/api/items/save", json={"url": "https://example.com/a?utm_campaign=x"})
     assert second_response.status_code == 200
     assert second_response.json()["id"] == first["id"]
+
+
+def test_save_url_rolls_back_item_when_enqueue_fails(tmp_path, monkeypatch):
+    _, TestingSession = make_client(tmp_path, monkeypatch)
+
+    def fail_enqueue(*args, **kwargs):
+        raise RuntimeError("queue unavailable")
+
+    import app.services.items as item_service
+    from app.db.models import Item
+
+    monkeypatch.setattr(item_service, "enqueue_job", fail_enqueue)
+
+    with TestingSession() as session:
+        try:
+            item_service.save_url(session, "https://example.com/b")
+        except RuntimeError as exc:
+            assert str(exc) == "queue unavailable"
+        else:
+            raise AssertionError("save_url should raise when enqueue fails")
+
+        assert session.scalar(select(Item)) is None
+
+
+def test_save_url_recovers_existing_item_after_integrity_error(tmp_path, monkeypatch):
+    _, TestingSession = make_client(tmp_path, monkeypatch)
+
+    import app.services.items as item_service
+    from app.db.models import Item
+
+    with TestingSession() as session:
+        existing, created = item_service.save_url(session, "https://example.com/c")
+        assert created is True
+
+    with TestingSession() as session:
+        original_scalar = session.scalar
+        first_lookup = True
+
+        def miss_then_select(*args, **kwargs):
+            nonlocal first_lookup
+            if first_lookup:
+                first_lookup = False
+                return None
+            return original_scalar(*args, **kwargs)
+
+        monkeypatch.setattr(session, "scalar", miss_then_select)
+
+        item, created = item_service.save_url(session, "https://example.com/c")
+
+    assert created is False
+    assert item.id == existing.id
+
+
+def test_claim_next_job_marks_one_queued_job_running(tmp_path, monkeypatch):
+    _, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import JobStatus
+    from app.services.jobs import claim_next_job, enqueue_job
+
+    with TestingSession() as session:
+        enqueue_job(session, "capture_item")
+        first = claim_next_job(session)
+        second = claim_next_job(session)
+
+    assert first is not None
+    assert first.status == JobStatus.running
+    assert first.attempts == 1
+    assert second is None

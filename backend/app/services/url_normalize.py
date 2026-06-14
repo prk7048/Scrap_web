@@ -15,15 +15,19 @@ class NormalizedUrl:
 def normalize_url(url: str) -> NormalizedUrl:
     parsed = urlparse(url.strip())
     scheme = parsed.scheme or "https"
-    netloc = parsed.netloc.lower()
+    host = (parsed.hostname or "").lower()
+    port = parsed.port
+    default_port = (scheme.lower() == "https" and port == 443) or (scheme.lower() == "http" and port == 80)
+    netloc = host if port is None or default_port else f"{host}:{port}"
+    domain = host.removeprefix("www.")
     path = parsed.path or ""
 
-    if netloc == "youtu.be":
+    if host == "youtu.be":
         video_id = path.strip("/")
         normalized = f"https://www.youtube.com/watch?v={video_id}"
         return NormalizedUrl(original=url, normalized=normalized, domain="youtube.com")
 
-    if netloc in {"youtube.com", "www.youtube.com", "m.youtube.com"} and path == "/watch":
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and path == "/watch":
         params = dict(parse_qsl(parsed.query, keep_blank_values=False))
         video_id = params.get("v")
         if video_id:
@@ -41,4 +45,4 @@ def normalize_url(url: str) -> NormalizedUrl:
     query = urlencode(filtered)
     path = path.rstrip("/") if path != "/" else ""
     normalized = urlunparse((scheme.lower(), netloc.removeprefix("www."), path, "", query, ""))
-    return NormalizedUrl(original=url, normalized=normalized, domain=netloc.removeprefix("www."))
+    return NormalizedUrl(original=url, normalized=normalized, domain=domain)
