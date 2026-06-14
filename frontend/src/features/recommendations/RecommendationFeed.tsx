@@ -15,7 +15,11 @@ type RecommendationListResponse = {
   items: Recommendation[];
 };
 
-export default function RecommendationFeed() {
+type RecommendationFeedProps = {
+  refreshKey: number;
+};
+
+export default function RecommendationFeed({ refreshKey }: RecommendationFeedProps) {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -41,7 +45,7 @@ export default function RecommendationFeed() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   return (
     <div className="view-stack">

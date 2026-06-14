@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 
 type Topic = {
-  id?: number;
+  id?: string;
   name: string;
   count?: number;
   children?: Topic[];

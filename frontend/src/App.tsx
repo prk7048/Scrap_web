@@ -15,8 +15,12 @@ type User = {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const trimmedSearch = searchQuery.trim();
 
   async function loadUser() {
     setLoading(true);
@@ -58,13 +62,25 @@ export default function App() {
         <header className="toolbar">
           <label className="search-box">
             <Search size={18} aria-hidden="true" />
-            <input aria-label="Search archive" placeholder="Search saved pages" type="search" />
+            <input
+              aria-label="Search archive"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search saved pages"
+              type="search"
+              value={searchQuery}
+            />
           </label>
-          <SaveUrlDialog />
+          <SaveUrlDialog onSaved={() => setRefreshKey((value) => value + 1)} />
         </header>
 
         <section className="content-region">
-          {selectedTopic ? <ItemList topic={selectedTopic} /> : <RecommendationFeed />}
+          {trimmedSearch ? (
+            <ItemList query={trimmedSearch} refreshKey={refreshKey} topic="Search results" />
+          ) : selectedTopic ? (
+            <ItemList refreshKey={refreshKey} topic={selectedTopic} />
+          ) : (
+            <RecommendationFeed refreshKey={refreshKey} />
+          )}
         </section>
       </main>
     </div>

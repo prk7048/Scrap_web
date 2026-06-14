@@ -2,7 +2,11 @@ import { FormEvent, useState } from "react";
 import { Plus } from "lucide-react";
 import { api } from "../../api/client";
 
-export default function SaveUrlDialog() {
+type SaveUrlDialogProps = {
+  onSaved: () => void;
+};
+
+export default function SaveUrlDialog({ onSaved }: SaveUrlDialogProps) {
   const [open, setOpen] = useState(false);
   const [urls, setUrls] = useState("");
   const [message, setMessage] = useState("");
@@ -35,6 +39,7 @@ export default function SaveUrlDialog() {
 
       setUrls("");
       setMessage(values.length === 1 ? "Saved URL." : `Saved ${values.length} URLs.`);
+      onSaved();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Could not save URL.");
     } finally {

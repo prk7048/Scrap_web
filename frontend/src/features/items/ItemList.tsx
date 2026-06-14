@@ -16,13 +16,15 @@ type Item = {
 
 type ItemListProps = {
   topic: string;
+  query?: string;
+  refreshKey: number;
 };
 
 type ItemListResponse = {
   items: Item[];
 };
 
-export default function ItemList({ topic }: ItemListProps) {
+export default function ItemList({ topic, query = "", refreshKey }: ItemListProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,7 +36,11 @@ export default function ItemList({ topic }: ItemListProps) {
       setLoading(true);
       setError("");
       try {
-        const data = await api<ItemListResponse>("/api/items");
+        const params = new URLSearchParams();
+        if (query.trim()) params.set("q", query.trim());
+        const queryString = params.toString();
+        const path = queryString ? `/api/items?${queryString}` : "/api/items";
+        const data = await api<ItemListResponse>(path);
         if (!cancelled) setItems(data.items);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load items.");
@@ -48,16 +54,20 @@ export default function ItemList({ topic }: ItemListProps) {
     return () => {
       cancelled = true;
     };
-  }, [topic]);
+  }, [topic, query, refreshKey]);
 
   return (
     <div className="view-stack">
       <div className="view-heading">
         <div>
-          <p className="eyebrow">Topic</p>
+          <p className="eyebrow">{query ? "Search" : "Topic"}</p>
           <h1>{topic}</h1>
         </div>
-        <p className="muted-text">Backend topic filtering is not enabled yet.</p>
+        {query ? (
+          <p className="muted-text">Results for "{query}"</p>
+        ) : (
+          <p className="muted-text">Backend topic filtering is not enabled yet.</p>
+        )}
       </div>
 
       {loading ? <p className="muted-text">Loading items...</p> : null}
