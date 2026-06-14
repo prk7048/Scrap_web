@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import or_, select
@@ -5,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import Artifact, Item, ItemStatus
+from app.services.ai import suggest_topic_name
 from app.services.jobs import enqueue_job
 from app.services.url_normalize import normalize_url
 
@@ -39,20 +41,45 @@ def save_url(db: Session, url: str) -> tuple[Item, bool]:
         raise
 
 
-def list_items(db: Session, query: str | None = None, status: ItemStatus | None = None) -> list[Item]:
+def list_items(
+    db: Session,
+    query: str | None = None,
+    topic: str | None = None,
+    source: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    status: ItemStatus | None = None,
+    has_failure: bool | None = None,
+) -> list[Item]:
     statement = select(Item).order_by(Item.saved_at.desc())
     if status is not None:
         statement = statement.where(Item.status == status)
+    if source:
+        statement = statement.where(Item.source_domain.ilike(f"%{source.strip()}%"))
+    if date_from is not None:
+        statement = statement.where(Item.saved_at >= date_from)
+    if date_to is not None:
+        statement = statement.where(Item.saved_at <= date_to)
+    if has_failure is True:
+        statement = statement.where(or_(Item.failure_reason.is_not(None), Item.status == ItemStatus.failed))
+    elif has_failure is False:
+        statement = statement.where(Item.failure_reason.is_(None), Item.status != ItemStatus.failed)
     if query:
-        search = f"%{query}%"
+        search = f"%{query.strip()}%"
         statement = statement.where(
             or_(
                 Item.title.ilike(search),
                 Item.normalized_url.ilike(search),
+                Item.original_url.ilike(search),
+                Item.source_domain.ilike(search),
                 Item.body_text.ilike(search),
             )
         )
-    return list(db.scalars(statement))
+    items = list(db.scalars(statement))
+    if topic:
+        normalized_topic = topic.strip().lower()
+        items = [item for item in items if suggest_topic_name(item).lower() == normalized_topic]
+    return items
 
 
 def get_item(db: Session, item_id: str) -> Item | None:

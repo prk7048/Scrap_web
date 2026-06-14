@@ -25,6 +25,16 @@ type ItemListResponse = {
   items: Item[];
 };
 
+export function buildItemListPath({ topic, query = "" }: Pick<ItemListProps, "topic" | "query">) {
+  const params = new URLSearchParams();
+  const trimmedQuery = query.trim();
+  if (trimmedQuery) params.set("q", trimmedQuery);
+  if (topic !== "Search results") params.set("topic", topic);
+
+  const queryString = params.toString();
+  return queryString ? `/api/items?${queryString}` : "/api/items";
+}
+
 export default function ItemList({ topic, query = "", refreshKey }: ItemListProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -38,11 +48,7 @@ export default function ItemList({ topic, query = "", refreshKey }: ItemListProp
       setLoading(true);
       setError("");
       try {
-        const params = new URLSearchParams();
-        if (query.trim()) params.set("q", query.trim());
-        const queryString = params.toString();
-        const path = queryString ? `/api/items?${queryString}` : "/api/items";
-        const data = await api<ItemListResponse>(path);
+        const data = await api<ItemListResponse>(buildItemListPath({ topic, query }));
         if (!cancelled) setItems(data.items);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load items.");
@@ -72,7 +78,7 @@ export default function ItemList({ topic, query = "", refreshKey }: ItemListProp
         {query ? (
           <p className="muted-text">Results for "{query}"</p>
         ) : (
-          <p className="muted-text">Backend topic filtering is not enabled yet.</p>
+          <p className="muted-text">Saved items in this topic.</p>
         )}
       </div>
 

@@ -1,5 +1,6 @@
 import importlib
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -117,6 +118,100 @@ def test_get_item_detail_includes_body_text_and_artifacts(tmp_path, monkeypatch)
             "created_at": data["artifacts"][0]["created_at"],
         }
     ]
+
+
+def test_get_items_filters_by_topic_source_date_status_and_failure(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Item, ItemStatus
+
+    old_date = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    recent_date = old_date + timedelta(days=3)
+    with TestingSession() as session:
+        session.add_all(
+            [
+                Item(
+                    original_url="https://openai.com/research",
+                    normalized_url="https://openai.com/research",
+                    source_domain="openai.com",
+                    title="Model research",
+                    body_text="prompt and agent notes",
+                    status=ItemStatus.preserved,
+                    failure_reason=None,
+                    saved_at=recent_date,
+                ),
+                Item(
+                    original_url="https://docs.python.org/tutorial",
+                    normalized_url="https://docs.python.org/tutorial",
+                    source_domain="docs.python.org",
+                    title="Python tutorial",
+                    body_text="development notes",
+                    status=ItemStatus.failed,
+                    failure_reason="body extraction failed",
+                    saved_at=old_date,
+                ),
+                Item(
+                    original_url="https://example.com/cooking",
+                    normalized_url="https://example.com/cooking",
+                    source_domain="example.com",
+                    title="Cooking notes",
+                    body_text="recipes",
+                    status=ItemStatus.inbox,
+                    failure_reason=None,
+                    saved_at=old_date,
+                ),
+            ]
+        )
+        session.commit()
+
+    topic_response = client.get("/api/items", params={"topic": "AI"})
+    source_response = client.get("/api/items", params={"source": "python.org"})
+    date_response = client.get(
+        "/api/items",
+        params={"date_from": recent_date.isoformat(), "date_to": recent_date.isoformat()},
+    )
+    status_response = client.get("/api/items", params={"status": "failed"})
+    failure_response = client.get("/api/items", params={"has_failure": "true"})
+
+    assert [item["source_domain"] for item in topic_response.json()["items"]] == ["openai.com"]
+    assert [item["source_domain"] for item in source_response.json()["items"]] == ["docs.python.org"]
+    assert [item["source_domain"] for item in date_response.json()["items"]] == ["openai.com"]
+    assert [item["source_domain"] for item in status_response.json()["items"]] == ["docs.python.org"]
+    assert [item["source_domain"] for item in failure_response.json()["items"]] == ["docs.python.org"]
+
+
+def test_get_items_keyword_search_includes_source_domain(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Item, ItemStatus
+
+    with TestingSession() as session:
+        session.add_all(
+            [
+                Item(
+                    original_url="https://news.ycombinator.com/item?id=1",
+                    normalized_url="https://news.ycombinator.com/item?id=1",
+                    source_domain="news.ycombinator.com",
+                    title="Discussion",
+                    body_text="comments",
+                    status=ItemStatus.preserved,
+                ),
+                Item(
+                    original_url="https://example.com/other",
+                    normalized_url="https://example.com/other",
+                    source_domain="example.com",
+                    title="Other",
+                    body_text="unrelated",
+                    status=ItemStatus.preserved,
+                ),
+            ]
+        )
+        session.commit()
+
+    response = client.get("/api/items", params={"q": "ycombinator"})
+
+    assert response.status_code == 200
+    assert [item["source_domain"] for item in response.json()["items"]] == ["news.ycombinator.com"]
 
 
 def test_get_item_artifact_returns_file(tmp_path, monkeypatch):

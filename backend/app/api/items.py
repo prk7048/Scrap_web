@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -46,11 +47,27 @@ def save_many_items(
 @router.get("", response_model=ItemListResponse)
 def get_items(
     q: str | None = None,
+    topic: str | None = None,
+    source: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     status_filter: ItemStatus | None = Query(default=None, alias="status"),
+    has_failure: bool | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ) -> ItemListResponse:
-    return ItemListResponse(items=list_items(db, query=q, status=status_filter))
+    return ItemListResponse(
+        items=list_items(
+            db,
+            query=q,
+            topic=topic,
+            source=source,
+            date_from=date_from,
+            date_to=date_to,
+            status=status_filter,
+            has_failure=has_failure,
+        )
+    )
 
 
 @router.get("/{item_id}", response_model=ItemDetailResponse)
