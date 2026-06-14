@@ -3,8 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import create_session, get_user_for_token, verify_password
-from app.db.models import User
+from app.core.security import create_session, get_user_for_token, hash_token, verify_password
+from app.db.models import SessionToken, User
 from app.db.session import get_db
 from app.schemas.auth import LoginRequest, UserResponse
 
@@ -43,6 +43,13 @@ def me(user: User = Depends(current_user)) -> User:
 
 
 @router.post("/logout")
-def logout(response: Response) -> dict[str, str]:
-    response.delete_cookie(get_settings().session_cookie_name)
+def logout(request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
+    settings = get_settings()
+    raw_token = request.cookies.get(settings.session_cookie_name)
+    if raw_token:
+        token = db.scalar(select(SessionToken).where(SessionToken.token_hash == hash_token(raw_token)))
+        if token is not None:
+            db.delete(token)
+    db.commit()
+    response.delete_cookie(settings.session_cookie_name)
     return {"status": "ok"}

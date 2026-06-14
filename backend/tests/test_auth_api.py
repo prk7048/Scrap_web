@@ -15,6 +15,7 @@ def make_client(tmp_path, monkeypatch) -> TestClient:
     from app.core.config import get_settings
 
     get_settings.cache_clear()
+    sys.modules.pop("app.api.auth", None)
     sys.modules.pop("app.main", None)
     sys.modules.pop("app.db.session", None)
 
@@ -58,4 +59,36 @@ def test_me_without_session_returns_401(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         response = client.get("/api/auth/me")
 
+    assert response.status_code == 401
+
+
+def test_me_with_session_returns_admin_user(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        client.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "secret-password"},
+        )
+        response = client.get("/api/auth/me")
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "admin@example.com"
+    assert response.json()["is_admin"] is True
+
+
+def test_logout_revokes_existing_session_token(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "secret-password"},
+        )
+
+        from app.core.config import get_settings
+
+        cookie_name = get_settings().session_cookie_name
+        old_token = login_response.cookies[cookie_name]
+        logout_response = client.post("/api/auth/logout")
+        response = client.get("/api/auth/me", headers={"Cookie": f"{cookie_name}={old_token}"})
+
+    assert logout_response.status_code == 200
+    assert logout_response.json() == {"status": "ok"}
     assert response.status_code == 401
