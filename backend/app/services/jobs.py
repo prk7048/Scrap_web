@@ -30,8 +30,8 @@ def enqueue_job(
     return job
 
 
-def claim_next_job(db: Session, max_attempts: int = 5) -> Job | None:
-    for _ in range(max_attempts):
+def claim_next_job(db: Session) -> Job | None:
+    while True:
         candidate_id = db.scalar(
             select(Job.id)
             .where(Job.status == JobStatus.queued, Job.run_after <= now_utc())
@@ -55,8 +55,6 @@ def claim_next_job(db: Session, max_attempts: int = 5) -> Job | None:
             return db.get(Job, candidate_id)
 
         db.rollback()
-
-    return None
 
 
 def complete_job(db: Session, job: Job) -> Job:

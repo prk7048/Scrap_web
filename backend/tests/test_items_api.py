@@ -170,3 +170,38 @@ def test_claim_next_job_continues_when_first_candidate_is_lost(tmp_path, monkeyp
     assert claimed.id == next_id
     assert claimed.status == JobStatus.running
     assert claimed.attempts == 1
+
+
+def test_claim_next_job_continues_after_more_than_five_lost_candidates(tmp_path, monkeypatch):
+    _, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import Job, JobStatus
+    from app.services.jobs import claim_next_job, enqueue_job
+
+    with TestingSession() as setup_session:
+        job_ids = [enqueue_job(setup_session, "capture_item").id for _ in range(7)]
+        expected_id = job_ids[-1]
+
+    with TestingSession() as session:
+        original_execute = session.execute
+        lost_count = 0
+
+        def lose_six_candidates(statement, *args, **kwargs):
+            nonlocal lost_count
+            if lost_count < 6 and statement.is_update:
+                lost_count += 1
+                with TestingSession() as competing_session:
+                    competing_job = competing_session.get(Job, job_ids[lost_count - 1])
+                    competing_job.status = JobStatus.running
+                    competing_job.attempts += 1
+                    competing_session.commit()
+            return original_execute(statement, *args, **kwargs)
+
+        monkeypatch.setattr(session, "execute", lose_six_candidates)
+
+        claimed = claim_next_job(session)
+
+    assert claimed is not None
+    assert claimed.id == expected_id
+    assert claimed.status == JobStatus.running
+    assert claimed.attempts == 1
