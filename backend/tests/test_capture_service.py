@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import Artifact, ArtifactType, Base, Item, ItemStatus, Job, JobStatus
 from app.services.jobs import enqueue_job
-from app.services.capture import store_capture_result
+from app.services.capture import CaptureResult, store_capture_result
 
 
 def make_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -66,6 +66,41 @@ def test_store_capture_result_writes_artifacts(tmp_path: Path):
     assert item.title == "Example"
     assert item.body_text == "Readable body"
     assert {artifact.artifact_type for artifact in artifacts} == {ArtifactType.html, ArtifactType.screenshot}
+    assert all((tmp_path / artifact.path).exists() for artifact in artifacts)
+
+
+def test_store_capture_result_preserves_partial_html_with_failure_reason(tmp_path: Path):
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        item = Item(
+            original_url="https://example.com",
+            normalized_url="https://example.com",
+            source_domain="example.com",
+        )
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+
+        store_capture_result(
+            session,
+            item,
+            data_dir=tmp_path,
+            title="Example",
+            description="A page",
+            body_text="Readable body",
+            html="<html><body>Readable body</body></html>",
+            screenshot_bytes=None,
+            failure_reason="screenshot failed",
+        )
+
+        artifacts = session.scalars(select(Artifact).where(Artifact.item_id == item.id)).all()
+
+    assert item.status == ItemStatus.classification_needed
+    assert item.failure_reason == "screenshot failed"
+    assert item.title == "Example"
+    assert item.body_text == "Readable body"
+    assert {artifact.artifact_type for artifact in artifacts} == {ArtifactType.html}
     assert all((tmp_path / artifact.path).exists() for artifact in artifacts)
 
 
@@ -249,3 +284,52 @@ def test_run_once_marks_item_and_job_failed_when_capture_fails(
     assert item.failure_reason == "capture exploded"
     assert job.status == JobStatus.failed
     assert job.error == "capture exploded"
+
+
+def test_run_once_preserves_partial_capture_when_later_artifact_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    worker, TestingSession = make_worker(tmp_path, monkeypatch)
+
+    async def partial_capture(url: str, timeout_ms: int):
+        return CaptureResult(
+            title="Example",
+            description="A page",
+            body_text="Readable body",
+            html="<html><body>Readable body</body></html>",
+            screenshot_bytes=None,
+            failure_reason="screenshot exploded",
+        )
+
+    monkeypatch.setattr(worker, "capture_url", partial_capture)
+
+    with TestingSession() as session:
+        item = Item(
+            original_url="https://example.com",
+            normalized_url="https://example.com",
+            source_domain="example.com",
+        )
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+        job = enqueue_job(session, "capture_item", item_id=item.id)
+        item_id = item.id
+        job_id = job.id
+
+    did_work = asyncio.run(worker.run_once())
+
+    with TestingSession() as session:
+        item = session.get(Item, item_id)
+        job = session.get(Job, job_id)
+        artifacts = session.scalars(select(Artifact).where(Artifact.item_id == item_id)).all()
+
+    assert did_work is True
+    assert item.status == ItemStatus.classification_needed
+    assert item.failure_reason == "screenshot exploded"
+    assert item.title == "Example"
+    assert item.body_text == "Readable body"
+    assert job.status == JobStatus.complete
+    assert job.error is None
+    assert {artifact.artifact_type for artifact in artifacts} == {ArtifactType.html}
+    assert all((tmp_path / "data" / artifact.path).exists() for artifact in artifacts)

@@ -19,11 +19,21 @@ async def process_capture_item(item_id: str) -> None:
         item.status = ItemStatus.processing
         db.commit()
         try:
-            title, description, body_text, html, screenshot = await capture_url(
+            result = await capture_url(
                 item.normalized_url,
                 settings.capture_timeout_ms,
             )
-            store_capture_result(db, item, Path(settings.data_dir), title, description, body_text, html, screenshot)
+            store_capture_result(
+                db,
+                item,
+                Path(settings.data_dir),
+                result.title,
+                result.description,
+                result.body_text,
+                result.html,
+                result.screenshot_bytes,
+                failure_reason=result.failure_reason,
+            )
         except Exception as exc:
             db.rollback()
             failed_item = db.get(Item, item_id)

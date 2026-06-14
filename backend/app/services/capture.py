@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -7,6 +8,16 @@ from readability import Document
 from sqlalchemy.orm import Session
 
 from app.db.models import Artifact, ArtifactType, Item, ItemStatus
+
+
+@dataclass(frozen=True)
+class CaptureResult:
+    title: str | None
+    description: str | None
+    body_text: str | None
+    html: str | None
+    screenshot_bytes: bytes | None
+    failure_reason: str | None = None
 
 
 def item_artifact_dir(data_dir: Path, item: Item) -> Path:
@@ -32,14 +43,15 @@ def store_capture_result(
     body_text: str | None,
     html: str | None,
     screenshot_bytes: bytes | None,
+    failure_reason: str | None = None,
 ) -> None:
     base_dir = data_dir.resolve()
     artifact_dir = item_artifact_dir(base_dir, item)
     item.title = title
     item.description = description
     item.body_text = body_text
-    item.status = ItemStatus.preserved
-    item.failure_reason = None
+    item.status = ItemStatus.classification_needed if failure_reason else ItemStatus.preserved
+    item.failure_reason = failure_reason
 
     if html:
         html_path = artifact_dir / "snapshot.html"
@@ -79,15 +91,27 @@ def extract_text(html: str) -> tuple[str | None, str | None, str]:
     return title, description, body_text
 
 
-async def capture_url(url: str, timeout_ms: int) -> tuple[str | None, str | None, str | None, str | None, bytes | None]:
+async def capture_url(url: str, timeout_ms: int) -> CaptureResult:
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
         try:
             page = await browser.new_page()
             await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
             html = await page.content()
-            screenshot_bytes = await page.screenshot(full_page=True)
+            title, description, body_text = extract_text(html)
+            screenshot_bytes = None
+            failure_reason = None
+            try:
+                screenshot_bytes = await page.screenshot(full_page=True)
+            except Exception as exc:
+                failure_reason = str(exc)
         finally:
             await browser.close()
-    title, description, body_text = extract_text(html)
-    return title, description, body_text, html, screenshot_bytes
+    return CaptureResult(
+        title=title,
+        description=description,
+        body_text=body_text,
+        html=html,
+        screenshot_bytes=screenshot_bytes,
+        failure_reason=failure_reason,
+    )
