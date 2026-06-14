@@ -1,21 +1,17 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.auth import current_user
 from app.core.config import get_settings
-from app.db.models import Artifact, Item, Tag, Topic, User
+from app.db.models import User
 from app.db.session import get_db
 from app.services.backup import (
     copy_artifacts,
     create_backup_manifest,
+    create_database_rows_snapshot,
     create_database_snapshot,
-    serialize_artifacts,
-    serialize_items,
-    serialize_tags,
-    serialize_topics,
 )
 
 router = APIRouter(prefix="/api/backups", tags=["backups"])
@@ -35,12 +31,7 @@ def run_backup(db: Session = Depends(get_db), _: User = Depends(current_admin_us
     copy_artifacts(Path(settings.data_dir), backup_root)
     database = create_database_snapshot(
         backup_root,
-        {
-            "items": serialize_items(db.scalars(select(Item).order_by(Item.id)).all()),
-            "artifacts": serialize_artifacts(db.scalars(select(Artifact).order_by(Artifact.id)).all()),
-            "topics": serialize_topics(db.scalars(select(Topic).order_by(Topic.id)).all()),
-            "tags": serialize_tags(db.scalars(select(Tag).order_by(Tag.id)).all()),
-        },
+        create_database_rows_snapshot(db),
     )
     manifest = create_backup_manifest(Path(settings.data_dir), backup_root, database.name)
     return {"status": "complete", "manifest": f"{backup_name}/{manifest.name}"}

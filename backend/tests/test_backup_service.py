@@ -244,6 +244,40 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
     assert database["artifacts"][0]["path"] == "item-1/page.html"
 
 
+def test_run_backup_api_snapshots_all_database_tables(tmp_path: Path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    from app.db.models import BackupRun, Job, JobStatus
+
+    with TestingSession() as session:
+        session.add(Job(id="job-1", job_type="capture_item", status=JobStatus.queued, payload_json='{"kind": "test"}'))
+        session.add(BackupRun(id="backup-run-1", status="complete", path="manual/manifest.json", error=None))
+        session.commit()
+
+    response = client.post("/api/backups/run")
+
+    assert response.status_code == 200
+    database_path = tmp_path / "backups" / response.json()["manifest"]
+    database = json.loads((database_path.parent / "database.json").read_text(encoding="utf-8"))
+
+    assert set(database) == {
+        "users",
+        "session_tokens",
+        "topics",
+        "tags",
+        "items",
+        "artifacts",
+        "jobs",
+        "backup_runs",
+    }
+    assert any(row["email"] == "admin@example.com" for row in database["users"])
+    assert any(row["user_id"] for row in database["session_tokens"])
+    assert any(row["id"] == "job-1" and row["status"] == "queued" for row in database["jobs"])
+    assert any(row["id"] == "backup-run-1" and row["status"] == "complete" for row in database["backup_runs"])
+
+
 def test_run_backup_requires_authentication(tmp_path: Path, monkeypatch):
     client, _ = make_client(tmp_path, monkeypatch)
     client.cookies.clear()

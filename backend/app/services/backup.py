@@ -2,9 +2,13 @@ import json
 import shutil
 from collections.abc import Iterable
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 
-from app.db.models import Artifact, Item, Tag, Topic
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.models import Artifact, Base, Item, Tag, Topic
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -33,6 +37,25 @@ def _validate_artifact_paths(data_dir: Path, backup_dir: Path) -> tuple[Path, Pa
 
 def _iso_or_none(value) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def _json_safe(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    return value
+
+
+def create_database_rows_snapshot(db: Session) -> dict[str, list[dict]]:
+    snapshot: dict[str, list[dict]] = {}
+    for table in Base.metadata.sorted_tables:
+        rows = db.execute(select(table).order_by(*table.primary_key.columns)).mappings().all()
+        snapshot[table.name] = [
+            {column.name: _json_safe(row[column.name]) for column in table.columns}
+            for row in rows
+        ]
+    return snapshot
 
 
 def serialize_items(items: Iterable[Item]) -> list[dict]:
