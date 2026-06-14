@@ -24,9 +24,12 @@ async def process_capture_item(item_id: str) -> None:
             )
             store_capture_result(db, item, Path(settings.data_dir), title, description, body_text, html, screenshot)
         except Exception as exc:
-            item.status = ItemStatus.failed
-            item.failure_reason = str(exc)
-            db.commit()
+            db.rollback()
+            failed_item = db.get(Item, item_id)
+            if failed_item is not None:
+                failed_item.status = ItemStatus.failed
+                failed_item.failure_reason = str(exc)
+                db.commit()
             raise
 
 
@@ -35,12 +38,19 @@ async def run_once() -> bool:
         job = claim_next_job(db)
         if job is None:
             return False
+        job_id = job.id
         try:
-            if job.job_type == "capture_item" and job.item_id:
-                await process_capture_item(job.item_id)
+            if job.job_type != "capture_item":
+                raise ValueError(f"Unsupported job type: {job.job_type}")
+            if not job.item_id:
+                raise ValueError("capture_item job missing item_id")
+            await process_capture_item(job.item_id)
             complete_job(db, job)
         except Exception as exc:
-            fail_job(db, job, str(exc))
+            db.rollback()
+            failed_job = db.get(type(job), job_id)
+            if failed_job is not None:
+                fail_job(db, failed_job, str(exc))
     return True
 
 

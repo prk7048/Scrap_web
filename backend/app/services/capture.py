@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import UUID
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
@@ -9,7 +10,15 @@ from app.db.models import Artifact, ArtifactType, Item, ItemStatus
 
 
 def item_artifact_dir(data_dir: Path, item: Item) -> Path:
-    path = data_dir / "items" / item.id
+    try:
+        item_id = str(UUID(item.id))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid item id for artifact path") from exc
+
+    base_dir = data_dir.resolve()
+    path = (base_dir / "items" / item_id).resolve()
+    if not path.is_relative_to(base_dir):
+        raise ValueError("Artifact path escapes data directory")
     path.mkdir(parents=True, exist_ok=True)
     return path
 
