@@ -28,7 +28,7 @@ def topic_tree(db: Session = Depends(get_db), _: User = Depends(current_user)) -
                 "count": count,
                 "children": [
                     {
-                        "id": f"source:{source}",
+                        "id": f"topic:{name.lower()}|source:{source}",
                         "name": source,
                         "count": source_count,
                         "children": [],

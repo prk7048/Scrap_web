@@ -103,7 +103,14 @@ def get_saved_item_artifact(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    return FileResponse(artifact_path, media_type=artifact.mime_type)
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+    }
+    if artifact.mime_type in {"text/html", "application/pdf"}:
+        headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'"
+
+    return FileResponse(artifact_path, media_type=artifact.mime_type, headers=headers)
 
 
 @router.post("/{item_id}/retry", response_model=ItemResponse)

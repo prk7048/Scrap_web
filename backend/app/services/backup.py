@@ -2,14 +2,15 @@ import json
 import re
 import shutil
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Artifact, BackupRun, Base, Item, Tag, Topic
+from app.db.models import Artifact, BackupRun, Base, Item, Job, JobStatus, Tag, Topic
+from app.services.jobs import enqueue_job
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -189,6 +190,29 @@ def prune_completed_backups(db: Session, backup_root: Path, retention_count: int
         if target.exists() and _is_relative_to(target, resolved_root) and target.is_dir():
             shutil.rmtree(target)
     return pruned
+
+
+def enqueue_due_backup(db: Session, interval_hours: int) -> bool:
+    if interval_hours < 1:
+        return False
+
+    active_job = db.scalar(
+        select(Job).where(Job.job_type == "backup", Job.status.in_([JobStatus.queued, JobStatus.running]))
+    )
+    if active_job is not None:
+        return False
+
+    latest_run = db.scalar(select(BackupRun).order_by(BackupRun.created_at.desc()).limit(1))
+    if latest_run is not None:
+        created_at = latest_run.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if created_at + timedelta(hours=interval_hours) > datetime.now(timezone.utc):
+            return False
+
+    enqueue_job(db, "backup", payload={"reason": "scheduled"}, commit=False)
+    db.commit()
+    return True
 
 
 def run_backup(

@@ -77,13 +77,22 @@ def list_items(
         )
     items = list(db.scalars(statement))
     if topic:
-        normalized_topic = topic.strip().lower()
-        if normalized_topic.startswith("source:"):
-            selected_source = normalized_topic.removeprefix("source:")
+        topic_parts = dict(
+            part.split(":", 1)
+            for part in topic.strip().lower().split("|")
+            if ":" in part and part.split(":", 1)[0] in {"topic", "source"}
+        )
+        selected_topic = topic_parts.get("topic")
+        selected_source = topic_parts.get("source")
+        if not topic_parts:
+            if topic.strip().lower().startswith("source:"):
+                selected_source = topic.strip().lower().removeprefix("source:")
+            else:
+                selected_topic = topic.strip().lower()
+        if selected_source:
             items = [item for item in items if (item.source_domain or "").lower() == selected_source]
-        else:
-            normalized_topic = normalized_topic.removeprefix("topic:")
-            items = [item for item in items if suggest_topic_name(item).lower() == normalized_topic]
+        if selected_topic:
+            items = [item for item in items if suggest_topic_name(item).lower() == selected_topic]
     return items
 
 

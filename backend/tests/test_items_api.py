@@ -212,6 +212,26 @@ def test_get_items_filters_by_topic_source_date_status_and_failure(tmp_path, mon
                     failure_reason=None,
                     saved_at=old_date,
                 ),
+                Item(
+                    original_url="https://shared.example/ai",
+                    normalized_url="https://shared.example/ai",
+                    source_domain="shared.example",
+                    title="Agent model notes",
+                    body_text="prompt research",
+                    status=ItemStatus.preserved,
+                    failure_reason=None,
+                    saved_at=recent_date,
+                ),
+                Item(
+                    original_url="https://shared.example/dev",
+                    normalized_url="https://shared.example/dev",
+                    source_domain="shared.example",
+                    title="Python setup",
+                    body_text="ubuntu docker",
+                    status=ItemStatus.preserved,
+                    failure_reason=None,
+                    saved_at=recent_date,
+                ),
             ]
         )
         session.commit()
@@ -227,17 +247,24 @@ def test_get_items_filters_by_topic_source_date_status_and_failure(tmp_path, mon
     capture_status_alias_response = client.get("/api/items", params={"capture_status": "failed"})
     failure_response = client.get("/api/items", params={"has_failure": "true"})
     no_failure_response = client.get("/api/items", params={"has_failure": "false"})
-    source_topic_response = client.get("/api/items", params={"topic": "source:openai.com"})
+    source_topic_response = client.get("/api/items", params={"topic": "topic:ai|source:openai.com"})
+    scoped_source_topic_response = client.get("/api/items", params={"topic": "topic:ai|source:shared.example"})
 
-    assert [item["source_domain"] for item in topic_response.json()["items"]] == ["openai.com"]
+    assert [item["source_domain"] for item in topic_response.json()["items"]] == ["openai.com", "shared.example"]
     assert [item["source_domain"] for item in source_response.json()["items"]] == ["docs.python.org"]
     assert [item["source_domain"] for item in domain_alias_response.json()["items"]] == ["docs.python.org"]
-    assert [item["source_domain"] for item in date_response.json()["items"]] == ["openai.com"]
+    assert [item["source_domain"] for item in date_response.json()["items"]] == ["openai.com", "shared.example", "shared.example"]
     assert [item["source_domain"] for item in status_response.json()["items"]] == ["docs.python.org"]
     assert [item["source_domain"] for item in capture_status_alias_response.json()["items"]] == ["docs.python.org"]
     assert [item["source_domain"] for item in failure_response.json()["items"]] == ["docs.python.org"]
-    assert [item["source_domain"] for item in no_failure_response.json()["items"]] == ["openai.com", "example.com"]
+    assert [item["source_domain"] for item in no_failure_response.json()["items"]] == [
+        "openai.com",
+        "shared.example",
+        "shared.example",
+        "example.com",
+    ]
     assert [item["source_domain"] for item in source_topic_response.json()["items"]] == ["openai.com"]
+    assert [item["title"] for item in scoped_source_topic_response.json()["items"]] == ["Agent model notes"]
 
 
 def test_get_items_keyword_search_includes_source_domain(tmp_path, monkeypatch):
@@ -308,6 +335,8 @@ def test_get_item_artifact_returns_file(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["content-security-policy"].startswith("sandbox")
+    assert response.headers["x-content-type-options"] == "nosniff"
     assert response.text == "<html><body>Saved</body></html>"
 
 

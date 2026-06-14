@@ -65,7 +65,7 @@ function ArtifactPreview({ artifact, itemId }: { artifact?: Artifact; itemId: st
   if (artifact.type === "html" || artifact.type === "pdf") {
     return (
       <div className="artifact-viewer">
-        <iframe src={href} title={`Archived ${artifact.type}`} />
+        <iframe sandbox="" src={href} title={`Archived ${artifact.type}`} />
         <ArtifactLink artifact={artifact} href={href} />
       </div>
     );

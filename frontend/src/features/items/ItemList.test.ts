@@ -7,8 +7,8 @@ describe("buildItemListPath", () => {
   });
 
   it("uses the topic filter token when one is supplied", () => {
-    expect(buildItemListPath({ topic: "openai.com", topicFilter: "source:openai.com", query: "" })).toBe(
-      "/api/items?topic=source%3Aopenai.com",
+    expect(buildItemListPath({ topic: "openai.com", topicFilter: "topic:ai|source:openai.com", query: "" })).toBe(
+      "/api/items?topic=topic%3Aai%7Csource%3Aopenai.com",
     );
   });
 

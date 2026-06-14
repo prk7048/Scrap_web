@@ -50,8 +50,6 @@ def store_capture_result(
     item.title = title
     item.description = description
     item.body_text = body_text
-    item.status = ItemStatus.classification_needed if failure_reason else ItemStatus.preserved
-    item.failure_reason = failure_reason
 
     if html:
         html_path = artifact_dir / "snapshot.html"
@@ -64,18 +62,36 @@ def store_capture_result(
                 mime_type="text/html",
             )
         )
+        item.status = ItemStatus.classification_needed if failure_reason else ItemStatus.preserved
+        item.failure_reason = failure_reason
+        db.commit()
 
     if screenshot_bytes:
-        screenshot_path = artifact_dir / "screenshot.png"
-        screenshot_path.write_bytes(screenshot_bytes)
-        db.add(
-            Artifact(
-                item_id=item.id,
-                artifact_type=ArtifactType.screenshot,
-                path=str(screenshot_path.relative_to(base_dir)),
-                mime_type="image/png",
+        try:
+            screenshot_path = artifact_dir / "screenshot.png"
+            screenshot_path.write_bytes(screenshot_bytes)
+            db.add(
+                Artifact(
+                    item_id=item.id,
+                    artifact_type=ArtifactType.screenshot,
+                    path=str(screenshot_path.relative_to(base_dir)),
+                    mime_type="image/png",
+                )
             )
-        )
+            item.status = ItemStatus.classification_needed if failure_reason else ItemStatus.preserved
+            item.failure_reason = failure_reason
+            db.commit()
+            db.refresh(item)
+            return
+        except Exception as exc:
+            db.rollback()
+            item.status = ItemStatus.classification_needed
+            item.failure_reason = str(exc)
+            db.commit()
+            db.refresh(item)
+            return
+    item.status = ItemStatus.classification_needed if failure_reason else ItemStatus.preserved
+    item.failure_reason = failure_reason
     db.commit()
     db.refresh(item)
 

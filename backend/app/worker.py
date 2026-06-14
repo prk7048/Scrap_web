@@ -5,7 +5,7 @@ from time import sleep
 from app.core.config import get_settings
 from app.db.models import Item, ItemStatus
 from app.db.session import SessionLocal
-from app.services.backup import run_backup
+from app.services.backup import enqueue_due_backup, run_backup
 from app.services.capture import capture_url, store_capture_result
 from app.services.jobs import claim_next_job, complete_job, fail_job
 
@@ -63,6 +63,8 @@ def process_backup() -> None:
 
 async def run_once() -> bool:
     with SessionLocal() as db:
+        settings = get_settings()
+        enqueue_due_backup(db, settings.backup_interval_hours)
         job = claim_next_job(db)
         if job is None:
             return False

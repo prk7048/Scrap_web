@@ -104,6 +104,54 @@ def test_store_capture_result_preserves_partial_html_with_failure_reason(tmp_pat
     assert all((tmp_path / artifact.path).exists() for artifact in artifacts)
 
 
+def test_store_capture_result_preserves_html_when_screenshot_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        item = Item(
+            original_url="https://example.com",
+            normalized_url="https://example.com",
+            source_domain="example.com",
+        )
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+        item_id = item.id
+
+        original_write_bytes = Path.write_bytes
+
+        def fail_screenshot_write(path: Path, data: bytes) -> int:
+            if path.name == "screenshot.png":
+                raise OSError("disk full")
+            return original_write_bytes(path, data)
+
+        monkeypatch.setattr(Path, "write_bytes", fail_screenshot_write)
+
+        store_capture_result(
+            session,
+            item,
+            data_dir=tmp_path,
+            title="Example",
+            description="A page",
+            body_text="Readable body",
+            html="<html><body>Readable body</body></html>",
+            screenshot_bytes=b"fake-png",
+        )
+
+    with Session(engine) as session:
+        item = session.get(Item, item_id)
+        artifacts = session.scalars(select(Artifact).where(Artifact.item_id == item_id)).all()
+
+    assert item.status == ItemStatus.classification_needed
+    assert item.failure_reason == "disk full"
+    assert item.body_text == "Readable body"
+    assert {artifact.artifact_type for artifact in artifacts} == {ArtifactType.html}
+    assert all((tmp_path / artifact.path).exists() for artifact in artifacts)
+
+
 def test_store_capture_result_accepts_relative_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)

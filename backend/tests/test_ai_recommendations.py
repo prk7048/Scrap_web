@@ -172,7 +172,7 @@ def test_ai_endpoints_return_seeded_item_fields(tmp_path, monkeypatch):
                 "id": "ai",
                 "name": "AI",
                 "count": 1,
-                "children": [{"id": "source:openai.com", "name": "openai.com", "count": 1, "children": []}],
+                "children": [{"id": "topic:ai|source:openai.com", "name": "openai.com", "count": 1, "children": []}],
             }
         ]
     }

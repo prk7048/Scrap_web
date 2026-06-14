@@ -1,7 +1,7 @@
 import importlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -13,6 +13,7 @@ from app.services.backup import (
     copy_artifacts,
     create_backup_manifest,
     create_database_snapshot,
+    enqueue_due_backup,
     prune_completed_backups,
     run_backup,
     serialize_artifacts,
@@ -401,6 +402,48 @@ def test_prune_completed_backups_keeps_latest_completed_dirs(tmp_path: Path):
     assert (backup_root / "manual-20260102T000000Z").exists()
     assert (backup_root / "manual-20260103T000000Z").exists()
     assert failed_dir.exists()
+
+
+def test_enqueue_due_backup_creates_job_when_interval_elapsed(tmp_path: Path):
+    from app.db.models import Base, Job, JobStatus
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path.as_posix()}/scheduled-backup.sqlite3", future=True)
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine, future=True)
+    with TestingSession() as session:
+        assert enqueue_due_backup(session, interval_hours=24) is True
+        job = session.query(Job).one()
+
+    assert job.job_type == "backup"
+    assert job.status == JobStatus.queued
+
+
+def test_enqueue_due_backup_skips_recent_run_and_active_job(tmp_path: Path):
+    from app.db.models import BackupRun, Base, Job, JobStatus
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path.as_posix()}/scheduled-backup-skip.sqlite3", future=True)
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine, future=True)
+
+    with TestingSession() as session:
+        session.add(BackupRun(status="complete", path="auto/manifest.json", created_at=datetime.now(timezone.utc)))
+        session.commit()
+        assert enqueue_due_backup(session, interval_hours=24) is False
+        assert session.query(Job).count() == 0
+
+    with TestingSession() as session:
+        session.query(BackupRun).delete()
+        session.add(
+            BackupRun(
+                status="complete",
+                path="old/manifest.json",
+                created_at=datetime.now(timezone.utc) - timedelta(hours=25),
+            )
+        )
+        session.add(Job(job_type="backup", status=JobStatus.queued))
+        session.commit()
+        assert enqueue_due_backup(session, interval_hours=24) is False
+        assert session.query(Job).count() == 1
 
 
 def test_run_backup_requires_authentication(tmp_path: Path, monkeypatch):
