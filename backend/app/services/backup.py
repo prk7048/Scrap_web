@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Artifact, Base, Item, Tag, Topic
+from app.db.models import Artifact, BackupRun, Base, Item, Tag, Topic
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -45,6 +46,31 @@ def _json_safe(value):
     if isinstance(value, Enum):
         return value.value
     return value
+
+
+def _safe_label(label: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "-", label.strip()).strip("-")
+    return safe or "backup"
+
+
+def _new_backup_dir(backup_root: Path, label: str) -> tuple[Path, str]:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    base_name = f"{_safe_label(label)}-{timestamp}"
+    for suffix in ["", *[f"-{index}" for index in range(2, 100)]]:
+        name = f"{base_name}{suffix}"
+        path = backup_root / name
+        if not path.exists():
+            return path, name
+    raise RuntimeError("Unable to allocate unique backup directory")
+
+
+def _safe_backup_subdir(relative_manifest_path: str | None) -> Path | None:
+    if not relative_manifest_path:
+        return None
+    relative_path = Path(relative_manifest_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts or len(relative_path.parts) < 2:
+        return None
+    return Path(relative_path.parts[0])
 
 
 def create_database_rows_snapshot(db: Session) -> dict[str, list[dict]]:
@@ -139,3 +165,61 @@ def copy_artifacts(data_dir: Path, backup_dir: Path) -> Path:
     else:
         target.mkdir(parents=True)
     return target
+
+
+def prune_completed_backups(db: Session, backup_root: Path, retention_count: int) -> list[Path]:
+    if retention_count < 1:
+        retention_count = 1
+
+    completed_runs = db.scalars(
+        select(BackupRun).where(BackupRun.status == "complete", BackupRun.path.is_not(None))
+    ).all()
+    completed_dirs = sorted(
+        {
+            backup_subdir
+            for run in completed_runs
+            if (backup_subdir := _safe_backup_subdir(run.path)) is not None
+        },
+        reverse=True,
+    )
+    pruned = completed_dirs[retention_count:]
+    resolved_root = backup_root.resolve()
+    for relative_dir in pruned:
+        target = (resolved_root / relative_dir).resolve()
+        if target.exists() and _is_relative_to(target, resolved_root) and target.is_dir():
+            shutil.rmtree(target)
+    return pruned
+
+
+def run_backup(
+    db: Session,
+    data_dir: Path,
+    backup_dir: Path,
+    label: str = "manual",
+    retention_count: int | None = None,
+) -> BackupRun:
+    backup_root = backup_dir.resolve()
+    backup_root.mkdir(parents=True, exist_ok=True)
+    run_dir, run_name = _new_backup_dir(backup_root, label)
+    manifest_relative_path = f"{run_name}/manifest.json"
+    backup_run = BackupRun(status="running", path=manifest_relative_path, error=None)
+    db.add(backup_run)
+    db.flush()
+
+    try:
+        copy_artifacts(data_dir, run_dir)
+        database = create_database_snapshot(run_dir, create_database_rows_snapshot(db))
+        create_backup_manifest(data_dir, run_dir, database.name)
+        backup_run.status = "complete"
+        backup_run.error = None
+        db.flush()
+        if retention_count is not None:
+            prune_completed_backups(db, backup_root, retention_count)
+        return backup_run
+    except Exception as exc:
+        backup_run.status = "failed"
+        backup_run.error = str(exc)
+        if not run_dir.exists():
+            backup_run.path = None
+        db.flush()
+        raise

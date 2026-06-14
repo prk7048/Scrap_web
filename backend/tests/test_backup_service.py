@@ -13,6 +13,8 @@ from app.services.backup import (
     copy_artifacts,
     create_backup_manifest,
     create_database_snapshot,
+    prune_completed_backups,
+    run_backup,
     serialize_artifacts,
     serialize_items,
 )
@@ -227,7 +229,9 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
     response = client.post("/api/backups/run")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "complete", "manifest": "manual/manifest.json"}
+    assert response.json()["status"] == "complete"
+    assert response.json()["manifest"].endswith("/manifest.json")
+    assert response.json()["manifest"] != "manual/manifest.json"
     manifest_path = tmp_path / "backups" / response.json()["manifest"]
     database_path = manifest_path.parent / "database.json"
     copied_artifact = manifest_path.parent / "data" / "sample.txt"
@@ -242,6 +246,15 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
     assert database["artifacts"][0]["id"] == "artifact-1"
     assert database["artifacts"][0]["artifact_type"] == "html"
     assert database["artifacts"][0]["path"] == "item-1/page.html"
+
+    from app.db.models import BackupRun
+
+    with TestingSession() as session:
+        backup_run = session.query(BackupRun).one()
+
+    assert backup_run.status == "complete"
+    assert backup_run.path == response.json()["manifest"]
+    assert backup_run.error is None
 
 
 def test_run_backup_api_snapshots_all_database_tables(tmp_path: Path, monkeypatch):
@@ -276,6 +289,117 @@ def test_run_backup_api_snapshots_all_database_tables(tmp_path: Path, monkeypatc
     assert any(row["user_id"] for row in database["session_tokens"])
     assert any(row["id"] == "job-1" and row["status"] == "queued" for row in database["jobs"])
     assert any(row["id"] == "backup-run-1" and row["status"] == "complete" for row in database["backup_runs"])
+
+
+def test_run_backup_service_writes_timestamped_dir_and_backup_run(tmp_path: Path):
+    from app.db.models import BackupRun, Base
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path.as_posix()}/service.sqlite3", future=True)
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine, future=True)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "artifact.txt").write_text("saved", encoding="utf-8")
+
+    with TestingSession() as session:
+        backup_run = run_backup(session, data_dir, tmp_path / "backups", label="manual")
+        run_status = backup_run.status
+        run_path = backup_run.path
+        run_error = backup_run.error
+        session.commit()
+
+    assert run_status == "complete"
+    assert run_path is not None
+    assert run_path.startswith("manual-")
+    assert run_path.endswith("/manifest.json")
+    assert run_error is None
+    assert (tmp_path / "backups" / run_path).exists()
+
+    with TestingSession() as session:
+        persisted = session.query(BackupRun).one()
+
+    assert persisted.status == "complete"
+    assert persisted.path == run_path
+    assert persisted.error is None
+
+
+def test_backup_status_requires_authentication_and_admin_user(tmp_path: Path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    client.cookies.clear()
+    unauthenticated = client.get("/api/backups/status")
+
+    assert unauthenticated.status_code == 401
+
+    from app.db.init_db import pwd_context
+    from app.db.models import User
+
+    with TestingSession() as session:
+        session.add(
+            User(
+                email="reader@example.com",
+                password_hash=pwd_context.hash("secret-password"),
+                is_admin=False,
+            )
+        )
+        session.commit()
+
+    client.post("/api/auth/login", json={"email": "reader@example.com", "password": "secret-password"})
+    forbidden = client.get("/api/backups/status")
+
+    assert forbidden.status_code == 403
+
+
+def test_backup_status_returns_latest_runs_and_retention_config(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("BACKUP_RETENTION_COUNT", "3")
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.models import BackupRun
+
+    with TestingSession() as session:
+        session.add(BackupRun(id="old-run", status="failed", path=None, error="disk full"))
+        session.commit()
+
+    response = client.get("/api/backups/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["retention_count"] == 3
+    assert body["interval_hours"] == 24
+    assert body["runs"][0]["id"] == "old-run"
+    assert body["runs"][0]["status"] == "failed"
+    assert body["runs"][0]["path"] is None
+    assert body["runs"][0]["error"] == "disk full"
+    assert body["runs"][0]["created_at"]
+
+
+def test_prune_completed_backups_keeps_latest_completed_dirs(tmp_path: Path):
+    backup_root = tmp_path / "backups"
+    for name in ["manual-20260101T000000Z", "manual-20260102T000000Z", "manual-20260103T000000Z"]:
+        backup_dir = backup_root / name
+        backup_dir.mkdir(parents=True)
+        (backup_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    failed_dir = backup_root / "manual-20260104T000000Z"
+    failed_dir.mkdir()
+    (failed_dir / "manifest.json").write_text("{}", encoding="utf-8")
+
+    from app.db.models import BackupRun, Base
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path.as_posix()}/retention.sqlite3", future=True)
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine, future=True)
+    with TestingSession() as session:
+        for name in ["manual-20260101T000000Z", "manual-20260102T000000Z", "manual-20260103T000000Z"]:
+            session.add(BackupRun(status="complete", path=f"{name}/manifest.json", error=None))
+        session.add(BackupRun(status="failed", path="manual-20260104T000000Z/manifest.json", error="boom"))
+        session.commit()
+        pruned = prune_completed_backups(session, backup_root, retention_count=2)
+
+    assert pruned == [Path("manual-20260101T000000Z")]
+    assert not (backup_root / "manual-20260101T000000Z").exists()
+    assert (backup_root / "manual-20260102T000000Z").exists()
+    assert (backup_root / "manual-20260103T000000Z").exists()
+    assert failed_dir.exists()
 
 
 def test_run_backup_requires_authentication(tmp_path: Path, monkeypatch):

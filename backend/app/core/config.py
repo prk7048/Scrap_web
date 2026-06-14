@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     backend_cors_origins: str = "http://localhost:5173"
     data_dir: str = "data"
     backup_dir: str = "backups"
+    backup_retention_count: int = 7
+    backup_interval_hours: int = 24
     session_cookie_name: str = "archive_session"
     session_ttl_days: int = 90
     capture_timeout_ms: int = 30_000

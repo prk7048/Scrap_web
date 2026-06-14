@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Archive, Search } from "lucide-react";
 import { api } from "./api/client";
 import Login from "./features/auth/Login";
+import BackupStatusPanel from "./features/backup/BackupStatusPanel";
 import ItemList from "./features/items/ItemList";
 import SaveUrlDialog from "./features/items/SaveUrlDialog";
 import RecommendationFeed from "./features/recommendations/RecommendationFeed";
@@ -56,6 +57,7 @@ export default function App() {
           <span>Archive</span>
         </button>
         <TopicTree selectedTopic={selectedTopic} onSelect={setSelectedTopic} />
+        <BackupStatusPanel />
       </aside>
 
       <main className="main-panel">

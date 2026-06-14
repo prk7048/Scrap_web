@@ -184,6 +184,48 @@ textarea:focus {
   text-align: center;
 }
 
+.backup-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 16px;
+}
+
+.backup-panel-header,
+.backup-run {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.backup-panel-header svg {
+  color: #64748b;
+}
+
+.backup-status-line {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.backup-run {
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.backup-path {
+  margin: 0;
+  color: #475569;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.backup-run-button {
+  width: 100%;
+}
+
 .main-panel {
   min-width: 0;
   background: #eef2f6;

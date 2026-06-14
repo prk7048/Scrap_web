@@ -19,6 +19,7 @@ def make_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-password")
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path.as_posix()}")
     monkeypatch.setenv("DATA_DIR", (tmp_path / "data").as_posix())
+    monkeypatch.setenv("BACKUP_DIR", (tmp_path / "backups").as_posix())
 
     from app.core.config import get_settings
 
@@ -185,6 +186,32 @@ def test_run_once_fails_capture_job_when_item_is_missing(tmp_path: Path, monkeyp
     assert did_work is True
     assert job.status == JobStatus.failed
     assert f"capture_item job item not found: {missing_item_id}" in job.error
+
+
+def test_run_once_processes_backup_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    worker, TestingSession = make_worker(tmp_path, monkeypatch)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "saved.txt").write_text("saved", encoding="utf-8")
+
+    with TestingSession() as session:
+        job = enqueue_job(session, "backup")
+        job_id = job.id
+
+    did_work = asyncio.run(worker.run_once())
+
+    from app.db.models import BackupRun
+
+    with TestingSession() as session:
+        job = session.get(Job, job_id)
+        backup_run = session.query(BackupRun).one()
+
+    assert did_work is True
+    assert job.status == JobStatus.complete
+    assert backup_run.status == "complete"
+    assert backup_run.path is not None
+    assert backup_run.path.startswith("auto-")
+    assert (tmp_path / "backups" / backup_run.path).exists()
 
 
 def test_run_once_marks_item_and_job_failed_when_capture_fails(
