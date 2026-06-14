@@ -278,6 +278,7 @@ def test_run_backup_api_snapshots_all_database_tables(tmp_path: Path, monkeypatc
     assert set(database) == {
         "users",
         "session_tokens",
+        "extension_tokens",
         "topics",
         "tags",
         "items",
