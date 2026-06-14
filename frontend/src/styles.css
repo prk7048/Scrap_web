@@ -192,6 +192,13 @@ textarea:focus {
   padding-top: 16px;
 }
 
+.extension-token-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 16px;
+}
+
 .backup-panel-header,
 .backup-run {
   display: flex;
@@ -224,6 +231,30 @@ textarea:focus {
 
 .backup-run-button {
   width: 100%;
+}
+
+.token-reveal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.token-reveal code {
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 8px;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.token-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .main-panel {

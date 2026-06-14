@@ -92,3 +92,46 @@ def test_logout_revokes_existing_session_token(tmp_path, monkeypatch):
     assert logout_response.status_code == 200
     assert logout_response.json() == {"status": "ok"}
     assert response.status_code == 401
+
+
+def test_extension_token_can_be_created_rotated_and_revoked(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        client.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "secret-password"},
+        )
+
+        first_response = client.post("/api/auth/extension-token")
+        status_response = client.get("/api/auth/extension-token")
+        second_response = client.post("/api/auth/extension-token")
+        revoke_response = client.delete("/api/auth/extension-token")
+        revoked_status_response = client.get("/api/auth/extension-token")
+
+    assert first_response.status_code == 201
+    assert first_response.json()["token"].startswith("pwa_ext_")
+    assert first_response.json()["active"] is True
+    assert status_response.status_code == 200
+    assert status_response.json()["active"] is True
+    assert "token" not in status_response.json()
+    assert second_response.status_code == 201
+    assert second_response.json()["token"].startswith("pwa_ext_")
+    assert second_response.json()["token"] != first_response.json()["token"]
+    assert revoke_response.status_code == 200
+    assert revoke_response.json() == {"status": "revoked"}
+    assert revoked_status_response.status_code == 200
+    assert revoked_status_response.json()["active"] is False
+
+
+def test_extension_token_does_not_authenticate_full_app_endpoints(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        client.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "secret-password"},
+        )
+        token_response = client.post("/api/auth/extension-token")
+        token = token_response.json()["token"]
+        client.cookies.clear()
+
+        response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401

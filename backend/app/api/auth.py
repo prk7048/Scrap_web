@@ -3,10 +3,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import create_session, get_user_for_token, hash_token, verify_password
+from app.core.security import (
+    create_extension_token,
+    create_session,
+    get_user_for_extension_token,
+    get_user_for_token,
+    hash_token,
+    has_active_extension_token,
+    revoke_extension_tokens,
+    verify_password,
+)
 from app.db.models import SessionToken, User
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, UserResponse
+from app.schemas.auth import ExtensionTokenCreatedResponse, ExtensionTokenStatusResponse, LoginRequest, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -17,6 +26,22 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return user
+
+
+def current_user_or_extension_save_user(request: Request, db: Session = Depends(get_db)) -> User:
+    settings = get_settings()
+    user = get_user_for_token(db, request.cookies.get(settings.session_cookie_name))
+    if user is not None:
+        return user
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() == "bearer":
+        user = get_user_for_extension_token(db, token)
+        if user is not None:
+            return user
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
 @router.post("/login", response_model=UserResponse)
@@ -40,6 +65,29 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(current_user)) -> User:
     return user
+
+
+@router.get("/extension-token", response_model=ExtensionTokenStatusResponse)
+def extension_token_status(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ExtensionTokenStatusResponse:
+    return ExtensionTokenStatusResponse(active=has_active_extension_token(db, user))
+
+
+@router.post("/extension-token", response_model=ExtensionTokenCreatedResponse, status_code=status.HTTP_201_CREATED)
+def create_or_rotate_extension_token(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ExtensionTokenCreatedResponse:
+    token = create_extension_token(db, user)
+    return ExtensionTokenCreatedResponse(active=True, token=token)
+
+
+@router.delete("/extension-token")
+def revoke_extension_token(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, str]:
+    revoke_extension_tokens(db, user)
+    return {"status": "revoked"}
 
 
 @router.post("/logout")

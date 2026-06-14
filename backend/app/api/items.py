@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.auth import current_user
+from app.api.auth import current_user, current_user_or_extension_save_user
 from app.core.config import get_settings
 from app.db.models import ItemStatus, User
 from app.db.session import get_db
@@ -20,7 +20,7 @@ def save_item(
     payload: SaveUrlRequest,
     response: Response,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(current_user_or_extension_save_user),
 ) -> ItemResponse:
     item, created = save_url(db, str(payload.url))
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
@@ -32,7 +32,7 @@ def save_many_items(
     payload: SaveManyRequest,
     response: Response,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(current_user_or_extension_save_user),
 ) -> ItemListResponse:
     items = []
     created_any = False

@@ -70,6 +70,58 @@ def test_save_duplicate_returns_existing_item(tmp_path, monkeypatch):
     assert second_response.json()["id"] == first["id"]
 
 
+def test_extension_token_can_save_url_without_session_cookie(tmp_path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+    token_response = client.post("/api/auth/extension-token")
+    token = token_response.json()["token"]
+    client.cookies.clear()
+
+    response = client.post(
+        "/api/items/save",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"url": "https://example.com/from-extension"},
+    )
+
+    assert response.status_code == 201
+
+    from app.db.models import Item
+
+    with TestingSession() as session:
+        item = session.scalar(select(Item))
+
+    assert item.normalized_url == "https://example.com/from-extension"
+
+
+def test_extension_token_can_save_many_without_session_cookie(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    token_response = client.post("/api/auth/extension-token")
+    token = token_response.json()["token"]
+    client.cookies.clear()
+
+    response = client.post(
+        "/api/items/save-many",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"urls": ["https://example.com/one", "https://example.com/two"]},
+    )
+
+    assert response.status_code == 201
+    assert [item["normalized_url"] for item in response.json()["items"]] == [
+        "https://example.com/one",
+        "https://example.com/two",
+    ]
+
+
+def test_extension_token_cannot_access_full_item_endpoints(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    token_response = client.post("/api/auth/extension-token")
+    token = token_response.json()["token"]
+    client.cookies.clear()
+
+    response = client.get("/api/items", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
+
+
 def test_get_item_detail_includes_body_text_and_artifacts(tmp_path, monkeypatch):
     client, TestingSession = make_client(tmp_path, monkeypatch)
 

@@ -12,3 +12,11 @@ class UserResponse(BaseModel):
     id: str
     email: EmailStr
     is_admin: bool
+
+
+class ExtensionTokenStatusResponse(BaseModel):
+    active: bool
+
+
+class ExtensionTokenCreatedResponse(ExtensionTokenStatusResponse):
+    token: str

@@ -1,5 +1,16 @@
 <main>
   <h1>Save to Archive</h1>
+  <form id="settings">
+    <label>
+      Backend URL
+      <input id="backend-url" name="backend-url" type="url" placeholder="http://localhost:8000" />
+    </label>
+    <label>
+      Extension token
+      <input id="token" name="token" type="password" autocomplete="off" placeholder="pwa_ext_..." />
+    </label>
+    <button id="save-settings" type="submit">Save settings</button>
+  </form>
   <button id="save">Save current page</button>
   <p id="status"></p>
 </main>

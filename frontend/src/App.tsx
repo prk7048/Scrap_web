@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Archive, Search } from "lucide-react";
 import { api } from "./api/client";
+import ExtensionTokenPanel from "./features/auth/ExtensionTokenPanel";
 import Login from "./features/auth/Login";
 import BackupStatusPanel from "./features/backup/BackupStatusPanel";
 import ItemList from "./features/items/ItemList";
@@ -56,7 +57,8 @@ export default function App() {
           <Archive size={22} aria-hidden="true" />
           <span>Archive</span>
         </button>
-            <TopicTree selectedTopic={selectedTopic?.filter ?? null} onSelect={setSelectedTopic} />
+        <TopicTree selectedTopic={selectedTopic?.filter ?? null} onSelect={setSelectedTopic} />
+        <ExtensionTokenPanel />
         <BackupStatusPanel />
       </aside>
 
