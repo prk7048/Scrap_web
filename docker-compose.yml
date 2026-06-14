@@ -18,7 +18,10 @@ services:
   backend:
     build:
       context: ./backend
-    env_file: .env
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
     ports:
       - "8000:8000"
     volumes:
@@ -32,7 +35,10 @@ services:
   worker:
     build:
       context: ./backend
-    env_file: .env
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
@@ -44,7 +50,10 @@ services:
   frontend:
     build:
       context: ./frontend
-    env_file: .env
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
     ports:
       - "5173:5173"
     depends_on:
