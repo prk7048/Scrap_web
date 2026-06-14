@@ -4,6 +4,7 @@ from time import sleep
 
 from app.core.config import get_settings
 from app.db.models import Item, ItemStatus
+from app.db.init_db import create_tables
 from app.db.session import SessionLocal
 from app.services.backup import enqueue_due_backup, run_backup
 from app.services.capture import capture_url, store_capture_result
@@ -88,6 +89,7 @@ async def run_once() -> bool:
 
 
 def main() -> None:
+    create_tables()
     while True:
         did_work = asyncio.run(run_once())
         if not did_work:
