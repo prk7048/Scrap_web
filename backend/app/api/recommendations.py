@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.auth import current_user
 from app.db.models import Item, User
 from app.db.session import get_db
+from app.schemas.ai import RecommendationListResponse
 from app.services.ai import build_recommendation_reason, build_summary, suggest_topic_name
 
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
 
-@router.get("")
+@router.get("", response_model=RecommendationListResponse)
 def recommendations(db: Session = Depends(get_db), _: User = Depends(current_user)) -> dict:
     items = db.scalars(select(Item).order_by(Item.saved_at.desc()).limit(20)).all()
     return {

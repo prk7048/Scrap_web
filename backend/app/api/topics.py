@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.auth import current_user
 from app.db.models import Item, User
 from app.db.session import get_db
+from app.schemas.ai import TopicTreeResponse
 from app.services.ai import suggest_topic_name
 
 router = APIRouter(prefix="/api/topics", tags=["topics"])
 
 
-@router.get("/tree")
+@router.get("/tree", response_model=TopicTreeResponse)
 def topic_tree(db: Session = Depends(get_db), _: User = Depends(current_user)) -> dict:
     counts: dict[str, int] = {}
     for item in db.scalars(select(Item)).all():
