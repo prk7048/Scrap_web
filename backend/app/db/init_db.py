@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Base, User
 
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def bootstrap_database(session: Session, admin_email: str, admin_password: str) -> None:
