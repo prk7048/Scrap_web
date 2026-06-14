@@ -1,7 +1,90 @@
 import json
 import shutil
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
+
+from app.db.models import Artifact, Item, Tag, Topic
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_artifact_paths(data_dir: Path, backup_dir: Path) -> tuple[Path, Path, Path]:
+    resolved_data_dir = data_dir.resolve()
+    resolved_backup_dir = backup_dir.resolve()
+    resolved_target = (resolved_backup_dir / "data").resolve()
+
+    if (
+        resolved_target == resolved_data_dir
+        or _is_relative_to(resolved_target, resolved_data_dir)
+        or _is_relative_to(resolved_backup_dir, resolved_data_dir)
+        or _is_relative_to(resolved_data_dir, resolved_target)
+    ):
+        raise ValueError("backup target overlaps data directory")
+
+    return resolved_data_dir, resolved_backup_dir, resolved_target
+
+
+def _iso_or_none(value) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def serialize_items(items: Iterable[Item]) -> list[dict]:
+    return [
+        {
+            "id": item.id,
+            "original_url": item.original_url,
+            "normalized_url": item.normalized_url,
+            "source_domain": item.source_domain,
+            "title": item.title,
+            "description": item.description,
+            "body_text": item.body_text,
+            "ai_summary": item.ai_summary,
+            "ai_recommendation_reason": item.ai_recommendation_reason,
+            "status": item.status.value,
+            "classification_status": item.classification_status,
+            "failure_reason": item.failure_reason,
+            "saved_at": item.saved_at.isoformat(),
+            "last_processed_at": _iso_or_none(item.last_processed_at),
+        }
+        for item in items
+    ]
+
+
+def serialize_artifacts(artifacts: Iterable[Artifact]) -> list[dict]:
+    return [
+        {
+            "id": artifact.id,
+            "item_id": artifact.item_id,
+            "artifact_type": artifact.artifact_type.value,
+            "path": artifact.path,
+            "mime_type": artifact.mime_type,
+            "created_at": artifact.created_at.isoformat(),
+        }
+        for artifact in artifacts
+    ]
+
+
+def serialize_topics(topics: Iterable[Topic]) -> list[dict]:
+    return [
+        {
+            "id": topic.id,
+            "name": topic.name,
+            "parent_id": topic.parent_id,
+            "confidence": topic.confidence,
+        }
+        for topic in topics
+    ]
+
+
+def serialize_tags(tags: Iterable[Tag]) -> list[dict]:
+    return [{"id": tag.id, "name": tag.name} for tag in tags]
 
 
 def create_backup_manifest(data_dir: Path, backup_dir: Path, database_dump_name: str) -> Path:
@@ -25,11 +108,11 @@ def create_database_snapshot(backup_dir: Path, rows: dict[str, list[dict]]) -> P
 
 
 def copy_artifacts(data_dir: Path, backup_dir: Path) -> Path:
-    target = backup_dir / "data"
+    resolved_data_dir, resolved_backup_dir, target = _validate_artifact_paths(data_dir, backup_dir)
     if target.exists():
         shutil.rmtree(target)
-    if data_dir.exists():
-        shutil.copytree(data_dir, target)
+    if resolved_data_dir.exists():
+        shutil.copytree(resolved_data_dir, target)
     else:
         target.mkdir(parents=True)
     return target

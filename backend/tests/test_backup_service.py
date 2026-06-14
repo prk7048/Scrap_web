@@ -1,13 +1,21 @@
 import importlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.services.backup import copy_artifacts, create_backup_manifest, create_database_snapshot
+from app.services.backup import (
+    copy_artifacts,
+    create_backup_manifest,
+    create_database_snapshot,
+    serialize_artifacts,
+    serialize_items,
+)
 
 
 def test_create_backup_manifest(tmp_path: Path):
@@ -46,6 +54,103 @@ def test_copy_artifacts_creates_empty_target_when_data_dir_is_missing(tmp_path: 
 
     assert target.is_dir()
     assert list(target.iterdir()) == []
+
+
+def test_copy_artifacts_rejects_backup_inside_source_without_deleting_source(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    source_file = data_dir / "sample.txt"
+    source_file.parent.mkdir()
+    source_file.write_text("saved", encoding="utf-8")
+    backup_dir = data_dir / "manual"
+    (backup_dir / "data").mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="backup target overlaps data directory"):
+        copy_artifacts(data_dir=data_dir, backup_dir=backup_dir)
+
+    assert source_file.read_text(encoding="utf-8") == "saved"
+
+
+def test_copy_artifacts_rejects_equal_source_and_target_without_deleting_source(tmp_path: Path):
+    data_dir = tmp_path / "backup" / "data"
+    source_file = data_dir / "sample.txt"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("saved", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="backup target overlaps data directory"):
+        copy_artifacts(data_dir=data_dir, backup_dir=tmp_path / "backup")
+
+    assert source_file.read_text(encoding="utf-8") == "saved"
+
+
+def test_serialize_items_includes_full_item_columns():
+    from app.db.models import Item, ItemStatus
+
+    saved_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    processed_at = datetime(2026, 1, 3, 4, 5, 6, tzinfo=timezone.utc)
+    item = Item(
+        id="item-1",
+        original_url="https://example.com/a?utm_source=x",
+        normalized_url="https://example.com/a",
+        source_domain="example.com",
+        title="Example",
+        description="Description",
+        body_text="Body text",
+        ai_summary="Summary",
+        ai_recommendation_reason="Reason",
+        status=ItemStatus.preserved,
+        classification_status="complete",
+        failure_reason=None,
+        saved_at=saved_at,
+        last_processed_at=processed_at,
+    )
+
+    snapshot = serialize_items([item])
+
+    assert snapshot == [
+        {
+            "id": "item-1",
+            "original_url": "https://example.com/a?utm_source=x",
+            "normalized_url": "https://example.com/a",
+            "source_domain": "example.com",
+            "title": "Example",
+            "description": "Description",
+            "body_text": "Body text",
+            "ai_summary": "Summary",
+            "ai_recommendation_reason": "Reason",
+            "status": "preserved",
+            "classification_status": "complete",
+            "failure_reason": None,
+            "saved_at": saved_at.isoformat(),
+            "last_processed_at": processed_at.isoformat(),
+        }
+    ]
+
+
+def test_serialize_artifacts_includes_artifact_metadata():
+    from app.db.models import Artifact, ArtifactType
+
+    created_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    artifact = Artifact(
+        id="artifact-1",
+        item_id="item-1",
+        artifact_type=ArtifactType.html,
+        path="item-1/page.html",
+        mime_type="text/html",
+        created_at=created_at,
+    )
+
+    snapshot = serialize_artifacts([artifact])
+
+    assert snapshot == [
+        {
+            "id": "artifact-1",
+            "item_id": "item-1",
+            "artifact_type": "html",
+            "path": "item-1/page.html",
+            "mime_type": "text/html",
+            "created_at": created_at.isoformat(),
+        }
+    ]
 
 
 def make_client(tmp_path: Path, monkeypatch) -> tuple[TestClient, sessionmaker]:
@@ -94,7 +199,7 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
     data_dir.mkdir()
     (data_dir / "sample.txt").write_text("saved", encoding="utf-8")
 
-    from app.db.models import Item, ItemStatus
+    from app.db.models import Artifact, ArtifactType, Item, ItemStatus
 
     with TestingSession() as session:
         session.add(
@@ -104,7 +209,17 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
                 normalized_url="https://example.com/a",
                 source_domain="example.com",
                 title="Example",
+                body_text="Body text",
                 status=ItemStatus.preserved,
+            )
+        )
+        session.add(
+            Artifact(
+                id="artifact-1",
+                item_id="item-1",
+                artifact_type=ArtifactType.html,
+                path="item-1/page.html",
+                mime_type="text/html",
             )
         )
         session.commit()
@@ -112,8 +227,8 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
     response = client.post("/api/backups/run")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "complete"
-    manifest_path = Path(response.json()["manifest"])
+    assert response.json() == {"status": "complete", "manifest": "manual/manifest.json"}
+    manifest_path = tmp_path / "backups" / response.json()["manifest"]
     database_path = manifest_path.parent / "database.json"
     copied_artifact = manifest_path.parent / "data" / "sample.txt"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -122,4 +237,39 @@ def test_run_backup_api_copies_artifacts_and_writes_item_snapshot(tmp_path: Path
     assert manifest["artifact_file_count"] == 1
     assert copied_artifact.read_text(encoding="utf-8") == "saved"
     assert database["items"][0]["id"] == "item-1"
+    assert database["items"][0]["body_text"] == "Body text"
     assert database["items"][0]["status"] == "preserved"
+    assert database["artifacts"][0]["id"] == "artifact-1"
+    assert database["artifacts"][0]["artifact_type"] == "html"
+    assert database["artifacts"][0]["path"] == "item-1/page.html"
+
+
+def test_run_backup_requires_authentication(tmp_path: Path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    client.cookies.clear()
+
+    response = client.post("/api/backups/run")
+
+    assert response.status_code == 401
+
+
+def test_run_backup_requires_admin_user(tmp_path: Path, monkeypatch):
+    client, TestingSession = make_client(tmp_path, monkeypatch)
+
+    from app.db.init_db import pwd_context
+    from app.db.models import User
+
+    with TestingSession() as session:
+        session.add(
+            User(
+                email="reader@example.com",
+                password_hash=pwd_context.hash("secret-password"),
+                is_admin=False,
+            )
+        )
+        session.commit()
+
+    client.post("/api/auth/login", json={"email": "reader@example.com", "password": "secret-password"})
+    response = client.post("/api/backups/run")
+
+    assert response.status_code == 403
