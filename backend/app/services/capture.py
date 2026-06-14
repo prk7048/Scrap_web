@@ -33,7 +33,8 @@ def store_capture_result(
     html: str | None,
     screenshot_bytes: bytes | None,
 ) -> None:
-    artifact_dir = item_artifact_dir(data_dir, item)
+    base_dir = data_dir.resolve()
+    artifact_dir = item_artifact_dir(base_dir, item)
     item.title = title
     item.description = description
     item.body_text = body_text
@@ -47,7 +48,7 @@ def store_capture_result(
             Artifact(
                 item_id=item.id,
                 artifact_type=ArtifactType.html,
-                path=str(html_path.relative_to(data_dir)),
+                path=str(html_path.relative_to(base_dir)),
                 mime_type="text/html",
             )
         )
@@ -59,7 +60,7 @@ def store_capture_result(
             Artifact(
                 item_id=item.id,
                 artifact_type=ArtifactType.screenshot,
-                path=str(screenshot_path.relative_to(data_dir)),
+                path=str(screenshot_path.relative_to(base_dir)),
                 mime_type="image/png",
             )
         )

@@ -14,7 +14,7 @@ async def process_capture_item(item_id: str) -> None:
     with SessionLocal() as db:
         item = db.get(Item, item_id)
         if item is None:
-            return
+            raise ValueError(f"capture_item job item not found: {item_id}")
         item.status = ItemStatus.processing
         db.commit()
         try:

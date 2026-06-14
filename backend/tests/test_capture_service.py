@@ -68,6 +68,42 @@ def test_store_capture_result_writes_artifacts(tmp_path: Path):
     assert all((tmp_path / artifact.path).exists() for artifact in artifacts)
 
 
+def test_store_capture_result_accepts_relative_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        item = Item(
+            original_url="https://example.com",
+            normalized_url="https://example.com",
+            source_domain="example.com",
+        )
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+
+        store_capture_result(
+            session,
+            item,
+            data_dir=Path("data"),
+            title="Example",
+            description="A page",
+            body_text="Readable body",
+            html="<html><body>Readable body</body></html>",
+            screenshot_bytes=b"fake-png",
+        )
+
+        artifacts = session.scalars(select(Artifact).where(Artifact.item_id == item.id)).all()
+
+    artifact_paths = {Path(artifact.path) for artifact in artifacts}
+    assert artifact_paths == {
+        Path("items") / item.id / "snapshot.html",
+        Path("items") / item.id / "screenshot.png",
+    }
+    assert all(not artifact_path.is_absolute() for artifact_path in artifact_paths)
+    assert all((tmp_path / "data" / artifact_path).exists() for artifact_path in artifact_paths)
+
+
 def test_store_capture_result_rejects_traversal_item_id(tmp_path: Path):
     data_dir = tmp_path / "data"
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
@@ -131,6 +167,24 @@ def test_run_once_fails_capture_job_without_item_id(tmp_path: Path, monkeypatch:
     assert did_work is True
     assert job.status == JobStatus.failed
     assert "missing item_id" in job.error
+
+
+def test_run_once_fails_capture_job_when_item_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    worker, TestingSession = make_worker(tmp_path, monkeypatch)
+
+    missing_item_id = "00000000-0000-0000-0000-000000000000"
+    with TestingSession() as session:
+        job = enqueue_job(session, "capture_item", item_id=missing_item_id)
+        job_id = job.id
+
+    did_work = asyncio.run(worker.run_once())
+
+    with TestingSession() as session:
+        job = session.get(Job, job_id)
+
+    assert did_work is True
+    assert job.status == JobStatus.failed
+    assert f"capture_item job item not found: {missing_item_id}" in job.error
 
 
 def test_run_once_marks_item_and_job_failed_when_capture_fails(
