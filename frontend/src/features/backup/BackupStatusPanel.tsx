@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DatabaseBackup, RefreshCw } from "lucide-react";
 import { api } from "../../api/client";
+import { formatDateTime, statusLabel } from "../../i18n/display";
 
 type BackupRun = {
   id: string;
@@ -16,13 +17,6 @@ type BackupStatus = {
   runs: BackupRun[];
 };
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 export default function BackupStatusPanel() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +29,7 @@ export default function BackupStatusPanel() {
       const data = await api<BackupStatus>("/api/backups/status");
       setStatus(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load backup status.");
+      setError(err instanceof Error ? err.message : "백업 상태를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -48,7 +42,7 @@ export default function BackupStatusPanel() {
       await api<{ status: string; manifest: string | null }>("/api/backups/run", { method: "POST" });
       await loadStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to run backup.");
+      setError(err instanceof Error ? err.message : "백업을 실행하지 못했습니다.");
     } finally {
       setRunning(false);
     }
@@ -61,30 +55,30 @@ export default function BackupStatusPanel() {
   const latest = status?.runs[0];
 
   return (
-    <section className="backup-panel" aria-label="Backup status">
+    <section className="backup-panel" aria-label="백업 상태">
       <div className="backup-panel-header">
         <div>
-          <p className="eyebrow">Backups</p>
-          <p className="backup-status-line">{loading ? "Loading" : latest ? latest.status : "No runs"}</p>
+          <p className="eyebrow">백업</p>
+          <p className="backup-status-line">{loading ? "불러오는 중" : latest ? statusLabel(latest.status) : "실행 기록 없음"}</p>
         </div>
         <DatabaseBackup size={20} aria-hidden="true" />
       </div>
 
       {latest ? (
         <div className="backup-run">
-          <span>{formatDate(latest.created_at)}</span>
-          <span className={`status-pill status-${latest.status}`}>{latest.status}</span>
+          <span>{formatDateTime(latest.created_at)}</span>
+          <span className={`status-pill status-${latest.status}`}>{statusLabel(latest.status)}</span>
         </div>
       ) : null}
 
       {latest?.path ? <p className="backup-path">{latest.path}</p> : null}
       {latest?.error ? <p className="error-text">{latest.error}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
-      {status ? <p className="muted-text">Keeping {status.retention_count} completed runs</p> : null}
+      {status ? <p className="muted-text">완료된 백업 {status.retention_count}개 보관</p> : null}
 
       <button className="secondary-button icon-button backup-run-button" disabled={running} onClick={runBackup} type="button">
         <RefreshCw size={16} aria-hidden="true" />
-        <span>{running ? "Running" : "Run Backup"}</span>
+        <span>{running ? "실행 중" : "백업 실행"}</span>
       </button>
     </section>
   );

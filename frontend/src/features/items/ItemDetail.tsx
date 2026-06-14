@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { api, apiUrl } from "../../api/client";
+import { formatDateTime, statusLabel } from "../../i18n/display";
 
 type Artifact = {
   id: string;
@@ -36,11 +37,11 @@ type ItemDetailProps = {
 };
 
 const tabs: { id: DetailTab; label: string }[] = [
-  { id: "body", label: "Body" },
-  { id: "original", label: "Original" },
-  { id: "snapshot", label: "Snapshot" },
+  { id: "body", label: "본문" },
+  { id: "original", label: "원문" },
+  { id: "snapshot", label: "스냅샷" },
   { id: "ai", label: "AI" },
-  { id: "meta", label: "Meta" },
+  { id: "meta", label: "정보" },
 ];
 
 function artifactHref(itemId: string, artifactId: string): string {
@@ -49,14 +50,14 @@ function artifactHref(itemId: string, artifactId: string): string {
 
 function ArtifactPreview({ artifact, itemId }: { artifact?: Artifact; itemId: string }) {
   if (!artifact) {
-    return <p className="muted-text">No artifact saved for this view.</p>;
+    return <p className="muted-text">이 보기에 저장된 파일이 없습니다.</p>;
   }
 
   const href = artifactHref(itemId, artifact.id);
   if (artifact.type === "screenshot") {
     return (
       <div className="artifact-viewer">
-        <img alt="Archived page screenshot" src={href} />
+        <img alt="보존된 페이지 스크린샷" src={href} />
         <ArtifactLink artifact={artifact} href={href} />
       </div>
     );
@@ -65,7 +66,7 @@ function ArtifactPreview({ artifact, itemId }: { artifact?: Artifact; itemId: st
   if (artifact.type === "html" || artifact.type === "pdf") {
     return (
       <div className="artifact-viewer">
-        <iframe sandbox="" src={href} title={`Archived ${artifact.type}`} />
+        <iframe sandbox="" src={href} title={`보존된 ${artifact.type}`} />
         <ArtifactLink artifact={artifact} href={href} />
       </div>
     );
@@ -81,14 +82,6 @@ function ArtifactLink({ artifact, href }: { artifact: Artifact; href: string }) 
       <ExternalLink size={15} aria-hidden="true" />
     </a>
   );
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "Not set";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 }
 
 export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
@@ -107,7 +100,7 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
         const data = await api<ItemDetailData>(`/api/items/${encodeURIComponent(itemId)}`);
         if (!cancelled) setItem(data);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load item.");
+        if (!cancelled) setError(err instanceof Error ? err.message : "저장한 글을 불러오지 못했습니다.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -130,7 +123,7 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
   }, [item]);
 
   if (loading) {
-    return <p className="muted-text">Loading item...</p>;
+    return <p className="muted-text">글을 불러오는 중...</p>;
   }
 
   if (error || !item) {
@@ -138,9 +131,9 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
       <div className="detail-shell">
         <button className="secondary-button icon-button compact-button" onClick={onBack} type="button">
           <ArrowLeft size={16} aria-hidden="true" />
-          <span>Back</span>
+          <span>뒤로</span>
         </button>
-        <p className="error-text">{error || "Item not found."}</p>
+        <p className="error-text">{error || "글을 찾을 수 없습니다."}</p>
       </div>
     );
   }
@@ -150,23 +143,23 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
       <header className="detail-header">
         <button className="secondary-button icon-button compact-button" onClick={onBack} type="button">
           <ArrowLeft size={16} aria-hidden="true" />
-          <span>Back</span>
+          <span>뒤로</span>
         </button>
         <div>
           <div className="card-topline">
             <span>{item.source_domain}</span>
-            <span className={`status-pill status-${item.status}`}>{item.status}</span>
+            <span className={`status-pill status-${item.status}`}>{statusLabel(item.status)}</span>
           </div>
           <h1>{item.title ?? item.normalized_url}</h1>
           {item.description ? <p className="muted-text">{item.description}</p> : null}
         </div>
         <a className="secondary-button icon-button compact-button" href={item.original_url} rel="noreferrer" target="_blank">
-          <span>Original</span>
+          <span>원문</span>
           <ExternalLink size={16} aria-hidden="true" />
         </a>
       </header>
 
-      <div className="tab-list" role="tablist" aria-label="Item detail">
+      <div className="tab-list" role="tablist" aria-label="글 상세">
         {tabs.map((tab) => (
           <button
             aria-selected={activeTab === tab.id}
@@ -182,7 +175,7 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
       </div>
 
       <section className="detail-panel" role="tabpanel">
-        {activeTab === "body" ? <pre className="body-text">{item.body_text || "No readable body text saved."}</pre> : null}
+        {activeTab === "body" ? <pre className="body-text">{item.body_text || "저장된 읽기용 본문이 없습니다."}</pre> : null}
         {activeTab === "original" ? (
           <div className="panel-stack">
             <a className="external-link" href={item.original_url} rel="noreferrer" target="_blank">
@@ -198,12 +191,12 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
         {activeTab === "ai" ? (
           <div className="panel-stack">
             <section>
-              <h2>Summary</h2>
-              <p>{item.ai_summary || "No summary saved."}</p>
+              <h2>요약</h2>
+              <p>{item.ai_summary || "저장된 요약이 없습니다."}</p>
             </section>
             <section>
-              <h2>Recommendation</h2>
-              <p>{item.ai_recommendation_reason || "No recommendation reason saved."}</p>
+              <h2>추천 이유</h2>
+              <p>{item.ai_recommendation_reason || "저장된 추천 이유가 없습니다."}</p>
             </section>
           </div>
         ) : null}
@@ -214,24 +207,24 @@ export default function ItemDetail({ itemId, onBack }: ItemDetailProps) {
               <dd>{item.normalized_url}</dd>
             </div>
             <div>
-              <dt>Status</dt>
-              <dd>{item.status}</dd>
+              <dt>상태</dt>
+              <dd>{statusLabel(item.status)}</dd>
             </div>
             <div>
-              <dt>Classification</dt>
-              <dd>{item.classification_status}</dd>
+              <dt>분류</dt>
+              <dd>{statusLabel(item.classification_status)}</dd>
             </div>
             <div>
-              <dt>Failure</dt>
-              <dd>{item.failure_reason || "None"}</dd>
+              <dt>실패 사유</dt>
+              <dd>{item.failure_reason || "없음"}</dd>
             </div>
             <div>
-              <dt>Saved</dt>
-              <dd>{formatDate(item.saved_at)}</dd>
+              <dt>저장 시각</dt>
+              <dd>{formatDateTime(item.saved_at)}</dd>
             </div>
             <div>
-              <dt>Processed</dt>
-              <dd>{formatDate(item.last_processed_at)}</dd>
+              <dt>처리 시각</dt>
+              <dd>{formatDateTime(item.last_processed_at)}</dd>
             </div>
           </dl>
         ) : null}

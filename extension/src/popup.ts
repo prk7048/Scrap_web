@@ -42,21 +42,21 @@ settingsForm.addEventListener("submit", async (event) => {
     backendUrl: normalizeBackendUrl(backendUrlInput.value),
     token: tokenInput.value.trim(),
   });
-  status.textContent = "Settings saved.";
+  status.textContent = "설정을 저장했습니다.";
 });
 
 button.addEventListener("click", async () => {
   button.disabled = true;
   try {
-    status.textContent = "Saving...";
+    status.textContent = "저장 중...";
     const settings = await loadSettings();
     if (!settings.token) {
-      status.textContent = "Add an extension token first.";
+      status.textContent = "확장 토큰을 먼저 입력하세요.";
       return;
     }
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab.url) {
-      status.textContent = "No URL found.";
+      status.textContent = "URL을 찾지 못했습니다.";
       return;
     }
     const response = await fetch(`${settings.backendUrl}/api/items/save`, {
@@ -67,9 +67,9 @@ button.addEventListener("click", async () => {
       },
       body: JSON.stringify({ url: tab.url }),
     });
-    status.textContent = response.ok ? "Saved to queue." : "Save failed. Check the backend URL and token.";
+    status.textContent = response.ok ? "저장 대기열에 추가했습니다." : "저장에 실패했습니다. 백엔드 URL과 토큰을 확인하세요.";
   } catch {
-    status.textContent = "Save failed. Is the archive running?";
+    status.textContent = "저장에 실패했습니다. 아카이브가 실행 중인지 확인하세요.";
   } finally {
     button.disabled = false;
   }

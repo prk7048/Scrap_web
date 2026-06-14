@@ -13,7 +13,7 @@ type ExtensionTokenCreated = ExtensionTokenStatus & {
 export default function ExtensionTokenPanel() {
   const [active, setActive] = useState(false);
   const [token, setToken] = useState<string | null>(null);
-  const [statusText, setStatusText] = useState("Loading");
+  const [statusText, setStatusText] = useState("불러오는 중");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,10 +22,10 @@ export default function ExtensionTokenPanel() {
     try {
       const data = await api<ExtensionTokenStatus>("/api/auth/extension-token");
       setActive(data.active);
-      setStatusText(data.active ? "Active" : "Not configured");
+      setStatusText(data.active ? "사용 중" : "설정 안 됨");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load extension token status.");
-      setStatusText("Unavailable");
+      setError(err instanceof Error ? err.message : "확장 프로그램 토큰 상태를 불러오지 못했습니다.");
+      setStatusText("사용 불가");
     }
   }
 
@@ -36,9 +36,9 @@ export default function ExtensionTokenPanel() {
       const data = await api<ExtensionTokenCreated>("/api/auth/extension-token", { method: "POST" });
       setToken(data.token);
       setActive(data.active);
-      setStatusText("Token ready");
+      setStatusText("토큰 준비됨");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create extension token.");
+      setError(err instanceof Error ? err.message : "확장 프로그램 토큰을 만들지 못했습니다.");
     } finally {
       setBusy(false);
     }
@@ -51,9 +51,9 @@ export default function ExtensionTokenPanel() {
       await api<{ status: string }>("/api/auth/extension-token", { method: "DELETE" });
       setToken(null);
       setActive(false);
-      setStatusText("Revoked");
+      setStatusText("해제됨");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to revoke extension token.");
+      setError(err instanceof Error ? err.message : "확장 프로그램 토큰을 해제하지 못했습니다.");
     } finally {
       setBusy(false);
     }
@@ -62,7 +62,7 @@ export default function ExtensionTokenPanel() {
   async function copyToken() {
     if (!token) return;
     await navigator.clipboard.writeText(token);
-    setStatusText("Copied");
+    setStatusText("복사됨");
   }
 
   useEffect(() => {
@@ -70,10 +70,10 @@ export default function ExtensionTokenPanel() {
   }, []);
 
   return (
-    <section className="extension-token-panel" aria-label="Browser extension token">
+    <section className="extension-token-panel" aria-label="브라우저 확장 토큰">
       <div className="backup-panel-header">
         <div>
-          <p className="eyebrow">Extension</p>
+          <p className="eyebrow">확장 프로그램</p>
           <p className="backup-status-line">{statusText}</p>
         </div>
         <KeyRound size={20} aria-hidden="true" />
@@ -81,16 +81,16 @@ export default function ExtensionTokenPanel() {
 
       <p className="muted-text">
         {token
-          ? "Paste this token into the extension popup."
+          ? "이 토큰을 확장 프로그램 팝업에 붙여넣으세요."
           : active
-            ? "Rotate to reveal a new token."
-            : "Create a save-only token."}
+            ? "새 토큰이 필요하면 다시 발급하세요."
+            : "저장 전용 토큰을 만드세요."}
       </p>
 
       {token ? (
         <div className="token-reveal">
           <code>{token}</code>
-          <button className="secondary-button compact-button" onClick={copyToken} type="button" aria-label="Copy token">
+          <button className="secondary-button compact-button" onClick={copyToken} type="button" aria-label="토큰 복사">
             <Copy size={15} aria-hidden="true" />
           </button>
         </div>
@@ -106,7 +106,7 @@ export default function ExtensionTokenPanel() {
           type="button"
         >
           <RefreshCw size={15} aria-hidden="true" />
-          <span>{active ? "Rotate" : "Create"}</span>
+          <span>{active ? "재발급" : "만들기"}</span>
         </button>
         <button
           className="secondary-button icon-button compact-button"
@@ -115,7 +115,7 @@ export default function ExtensionTokenPanel() {
           type="button"
         >
           <Trash2 size={15} aria-hidden="true" />
-          <span>Revoke</span>
+          <span>해제</span>
         </button>
       </div>
     </section>

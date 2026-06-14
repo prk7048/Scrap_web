@@ -32,7 +32,7 @@ export default function App() {
       setUser(data);
     } catch (err) {
       setUser(null);
-      setError(err instanceof Error ? err.message : "Unable to load session.");
+      setError(err instanceof Error ? err.message : "세션을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -43,7 +43,7 @@ export default function App() {
   }, []);
 
   if (loading) {
-    return <div className="screen-message">Loading archive...</div>;
+    return <div className="screen-message">아카이브를 불러오는 중...</div>;
   }
 
   if (!user) {
@@ -55,7 +55,7 @@ export default function App() {
       <aside className="sidebar">
         <button className="brand-button" onClick={() => setSelectedTopic(null)} type="button">
           <Archive size={22} aria-hidden="true" />
-          <span>Archive</span>
+          <span>아카이브</span>
         </button>
         <TopicTree selectedTopic={selectedTopic?.filter ?? null} onSelect={setSelectedTopic} />
         <ExtensionTokenPanel />
@@ -67,9 +67,9 @@ export default function App() {
           <label className="search-box">
             <Search size={18} aria-hidden="true" />
             <input
-              aria-label="Search archive"
+              aria-label="아카이브 검색"
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search saved pages"
+              placeholder="저장한 글 검색"
               type="search"
               value={searchQuery}
             />

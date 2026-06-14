@@ -1,17 +1,17 @@
 <main>
-  <h1>Save to Archive</h1>
+  <h1>아카이브에 저장</h1>
   <form id="settings">
     <label>
-      Backend URL
+      백엔드 URL
       <input id="backend-url" name="backend-url" type="url" placeholder="http://localhost:8000" />
     </label>
     <label>
-      Extension token
+      확장 토큰
       <input id="token" name="token" type="password" autocomplete="off" placeholder="pwa_ext_..." />
     </label>
-    <button id="save-settings" type="submit">Save settings</button>
+    <button id="save-settings" type="submit">설정 저장</button>
   </form>
-  <button id="save">Save current page</button>
+  <button id="save">현재 페이지 저장</button>
   <p id="status"></p>
 </main>
 <script type="module" src="./popup.ts"></script>

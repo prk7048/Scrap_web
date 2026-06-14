@@ -15,4 +15,8 @@ describe("buildItemListPath", () => {
   it("omits the display-only search results topic", () => {
     expect(buildItemListPath({ topic: "Search results", query: "openai" })).toBe("/api/items?q=openai");
   });
+
+  it("omits the Korean display-only search results topic", () => {
+    expect(buildItemListPath({ topic: "검색 결과", query: "openai" })).toBe("/api/items?q=openai");
+  });
 });

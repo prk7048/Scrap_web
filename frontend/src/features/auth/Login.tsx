@@ -24,7 +24,7 @@ export default function Login({ onLogin, initialError }: LoginProps) {
       });
       await onLogin();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
     } finally {
       setSubmitting(false);
     }
@@ -34,12 +34,12 @@ export default function Login({ onLogin, initialError }: LoginProps) {
     <main className="login-page">
       <form className="login-panel" onSubmit={handleSubmit}>
         <div>
-          <h1>Personal Web Archive</h1>
-          <p>Sign in to review saved pages, topics, and recommendations.</p>
+          <h1>개인 웹 아카이브</h1>
+          <p>저장한 글, 주제, 추천 목록을 보려면 로그인하세요.</p>
         </div>
 
         <label>
-          Email
+          이메일
           <input
             autoComplete="email"
             onChange={(event) => setEmail(event.target.value)}
@@ -49,7 +49,7 @@ export default function Login({ onLogin, initialError }: LoginProps) {
         </label>
 
         <label>
-          Password
+          비밀번호
           <input
             autoComplete="current-password"
             onChange={(event) => setPassword(event.target.value)}
@@ -61,7 +61,7 @@ export default function Login({ onLogin, initialError }: LoginProps) {
         {error ? <p className="error-text">{error}</p> : null}
 
         <button className="primary-button" disabled={submitting} type="submit">
-          {submitting ? "Signing in..." : "Sign in"}
+          {submitting ? "로그인 중..." : "로그인"}
         </button>
       </form>
     </main>

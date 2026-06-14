@@ -17,7 +17,7 @@ export default function SaveUrlDialog({ onSaved }: SaveUrlDialogProps) {
     const values = urls.split(/\s+/).map((url) => url.trim()).filter(Boolean);
 
     if (values.length === 0) {
-      setMessage("Enter at least one URL.");
+      setMessage("URL을 하나 이상 입력하세요.");
       return;
     }
 
@@ -38,10 +38,10 @@ export default function SaveUrlDialog({ onSaved }: SaveUrlDialogProps) {
       }
 
       setUrls("");
-      setMessage(values.length === 1 ? "Saved URL." : `Saved ${values.length} URLs.`);
+      setMessage(values.length === 1 ? "URL을 저장했습니다." : `URL ${values.length}개를 저장했습니다.`);
       onSaved();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not save URL.");
+      setMessage(err instanceof Error ? err.message : "URL을 저장하지 못했습니다.");
     } finally {
       setSaving(false);
     }
@@ -51,13 +51,13 @@ export default function SaveUrlDialog({ onSaved }: SaveUrlDialogProps) {
     <div className="save-url">
       <button className="primary-button icon-button" onClick={() => setOpen((value) => !value)} type="button">
         <Plus size={18} aria-hidden="true" />
-        <span>Save URL</span>
+        <span>URL 저장</span>
       </button>
 
       {open ? (
         <form className="save-popover" onSubmit={handleSubmit}>
           <label>
-            URLs
+            URL
             <textarea
               onChange={(event) => setUrls(event.target.value)}
               placeholder="https://example.com/article"
@@ -67,10 +67,10 @@ export default function SaveUrlDialog({ onSaved }: SaveUrlDialogProps) {
           </label>
           <div className="popover-actions">
             <button className="secondary-button" onClick={() => setOpen(false)} type="button">
-              Cancel
+              취소
             </button>
             <button className="primary-button" disabled={saving} type="submit">
-              {saving ? "Saving..." : "Save"}
+              {saving ? "저장 중..." : "저장"}
             </button>
           </div>
           {message ? <p className="status-text">{message}</p> : null}
