@@ -1,10 +1,4 @@
-from pydantic import BaseModel, ConfigDict
-
-try:
-    import email_validator  # noqa: F401
-    from pydantic import EmailStr
-except ImportError:
-    EmailStr = str
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class LoginRequest(BaseModel):

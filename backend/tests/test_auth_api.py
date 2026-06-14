@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 def make_client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("APP_SECRET_KEY", "test-secret-key-value")
-    monkeypatch.setenv("ADMIN_EMAIL", "admin@example.local")
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@example.com")
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-password")
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{tmp_path.as_posix()}/auth.sqlite3")
 
@@ -25,7 +25,7 @@ def make_client(tmp_path, monkeypatch) -> TestClient:
     TestingSession = sessionmaker(bind=engine, future=True)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        bootstrap_database(session, "admin@example.local", "secret-password")
+        bootstrap_database(session, "admin@example.com", "secret-password")
 
     session_module = importlib.import_module("app.db.session")
     main = importlib.import_module("app.main")
@@ -43,11 +43,11 @@ def test_login_with_admin_credentials_sets_session_cookie_and_returns_admin_emai
     with make_client(tmp_path, monkeypatch) as client:
         response = client.post(
             "/api/auth/login",
-            json={"email": "admin@example.local", "password": "secret-password"},
+            json={"email": "admin@example.com", "password": "secret-password"},
         )
 
     assert response.status_code == 200
-    assert response.json()["email"] == "admin@example.local"
+    assert response.json()["email"] == "admin@example.com"
 
     from app.core.config import get_settings
 
