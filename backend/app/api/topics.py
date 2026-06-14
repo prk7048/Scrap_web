@@ -14,12 +14,28 @@ router = APIRouter(prefix="/api/topics", tags=["topics"])
 @router.get("/tree", response_model=TopicTreeResponse)
 def topic_tree(db: Session = Depends(get_db), _: User = Depends(current_user)) -> dict:
     counts: dict[str, int] = {}
+    sources_by_topic: dict[str, dict[str, int]] = {}
     for item in db.scalars(select(Item)).all():
         topic = suggest_topic_name(item)
         counts[topic] = counts.get(topic, 0) + 1
+        source_counts = sources_by_topic.setdefault(topic, {})
+        source_counts[item.source_domain] = source_counts.get(item.source_domain, 0) + 1
     return {
         "topics": [
-            {"id": name.lower(), "name": name, "count": count, "children": []}
+            {
+                "id": name.lower(),
+                "name": name,
+                "count": count,
+                "children": [
+                    {
+                        "id": f"source:{source}",
+                        "name": source,
+                        "count": source_count,
+                        "children": [],
+                    }
+                    for source, source_count in sorted(sources_by_topic.get(name, {}).items())
+                ],
+            }
             for name, count in sorted(counts.items())
         ]
     }

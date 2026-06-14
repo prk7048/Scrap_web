@@ -15,7 +15,7 @@ type User = {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<{ label: string; filter: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ export default function App() {
           <Archive size={22} aria-hidden="true" />
           <span>Archive</span>
         </button>
-        <TopicTree selectedTopic={selectedTopic} onSelect={setSelectedTopic} />
+            <TopicTree selectedTopic={selectedTopic?.filter ?? null} onSelect={setSelectedTopic} />
         <BackupStatusPanel />
       </aside>
 
@@ -79,7 +79,7 @@ export default function App() {
           {trimmedSearch ? (
             <ItemList query={trimmedSearch} refreshKey={refreshKey} topic="Search results" />
           ) : selectedTopic ? (
-            <ItemList refreshKey={refreshKey} topic={selectedTopic} />
+            <ItemList refreshKey={refreshKey} topic={selectedTopic.label} topicFilter={selectedTopic.filter} />
           ) : (
             <RecommendationFeed refreshKey={refreshKey} />
           )}

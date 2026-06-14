@@ -17,6 +17,7 @@ type Item = {
 
 type ItemListProps = {
   topic: string;
+  topicFilter?: string;
   query?: string;
   refreshKey: number;
 };
@@ -25,17 +26,17 @@ type ItemListResponse = {
   items: Item[];
 };
 
-export function buildItemListPath({ topic, query = "" }: Pick<ItemListProps, "topic" | "query">) {
+export function buildItemListPath({ topic, topicFilter, query = "" }: Pick<ItemListProps, "topic" | "topicFilter" | "query">) {
   const params = new URLSearchParams();
   const trimmedQuery = query.trim();
   if (trimmedQuery) params.set("q", trimmedQuery);
-  if (topic !== "Search results") params.set("topic", topic);
+  if (topic !== "Search results") params.set("topic", topicFilter ?? topic);
 
   const queryString = params.toString();
   return queryString ? `/api/items?${queryString}` : "/api/items";
 }
 
-export default function ItemList({ topic, query = "", refreshKey }: ItemListProps) {
+export default function ItemList({ topic, topicFilter, query = "", refreshKey }: ItemListProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export default function ItemList({ topic, query = "", refreshKey }: ItemListProp
       setLoading(true);
       setError("");
       try {
-        const data = await api<ItemListResponse>(buildItemListPath({ topic, query }));
+        const data = await api<ItemListResponse>(buildItemListPath({ topic, topicFilter, query }));
         if (!cancelled) setItems(data.items);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load items.");
@@ -62,7 +63,7 @@ export default function ItemList({ topic, query = "", refreshKey }: ItemListProp
     return () => {
       cancelled = true;
     };
-  }, [topic, query, refreshKey]);
+  }, [topic, topicFilter, query, refreshKey]);
 
   if (selectedItemId) {
     return <ItemDetail itemId={selectedItemId} onBack={() => setSelectedItemId(null)} />;

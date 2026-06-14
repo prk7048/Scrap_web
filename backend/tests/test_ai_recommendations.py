@@ -167,7 +167,14 @@ def test_ai_endpoints_return_seeded_item_fields(tmp_path, monkeypatch):
 
     assert topics_response.status_code == 200
     assert topics_response.json() == {
-        "topics": [{"id": "ai", "name": "AI", "count": 1, "children": []}]
+        "topics": [
+            {
+                "id": "ai",
+                "name": "AI",
+                "count": 1,
+                "children": [{"id": "source:openai.com", "name": "openai.com", "count": 1, "children": []}],
+            }
+        ]
     }
     assert recommendations_response.status_code == 200
     assert recommendations_response.json() == {

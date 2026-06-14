@@ -10,7 +10,7 @@ type Topic = {
 
 type TopicTreeProps = {
   selectedTopic: string | null;
-  onSelect: (topic: string) => void;
+  onSelect: (topic: { label: string; filter: string }) => void;
 };
 
 type TopicTreeResponse = {
@@ -41,11 +41,13 @@ export default function TopicTree({ selectedTopic, onSelect }: TopicTreeProps) {
   }, []);
 
   function renderTopic(topic: Topic, depth = 0) {
+    const topicFilter = topic.id ?? topic.name;
+
     return (
       <li key={topic.id ?? topic.name}>
         <button
-          className={selectedTopic === topic.name ? "topic-button selected" : "topic-button"}
-          onClick={() => onSelect(topic.name)}
+          className={selectedTopic === topicFilter ? "topic-button selected" : "topic-button"}
+          onClick={() => onSelect({ label: topic.name, filter: topicFilter })}
           style={{ paddingLeft: `${12 + depth * 16}px` }}
           type="button"
         >

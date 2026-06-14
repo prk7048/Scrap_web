@@ -166,18 +166,26 @@ def test_get_items_filters_by_topic_source_date_status_and_failure(tmp_path, mon
 
     topic_response = client.get("/api/items", params={"topic": "AI"})
     source_response = client.get("/api/items", params={"source": "python.org"})
+    domain_alias_response = client.get("/api/items", params={"domain": "python.org"})
     date_response = client.get(
         "/api/items",
         params={"date_from": recent_date.isoformat(), "date_to": recent_date.isoformat()},
     )
     status_response = client.get("/api/items", params={"status": "failed"})
+    capture_status_alias_response = client.get("/api/items", params={"capture_status": "failed"})
     failure_response = client.get("/api/items", params={"has_failure": "true"})
+    no_failure_response = client.get("/api/items", params={"has_failure": "false"})
+    source_topic_response = client.get("/api/items", params={"topic": "source:openai.com"})
 
     assert [item["source_domain"] for item in topic_response.json()["items"]] == ["openai.com"]
     assert [item["source_domain"] for item in source_response.json()["items"]] == ["docs.python.org"]
+    assert [item["source_domain"] for item in domain_alias_response.json()["items"]] == ["docs.python.org"]
     assert [item["source_domain"] for item in date_response.json()["items"]] == ["openai.com"]
     assert [item["source_domain"] for item in status_response.json()["items"]] == ["docs.python.org"]
+    assert [item["source_domain"] for item in capture_status_alias_response.json()["items"]] == ["docs.python.org"]
     assert [item["source_domain"] for item in failure_response.json()["items"]] == ["docs.python.org"]
+    assert [item["source_domain"] for item in no_failure_response.json()["items"]] == ["openai.com", "example.com"]
+    assert [item["source_domain"] for item in source_topic_response.json()["items"]] == ["openai.com"]
 
 
 def test_get_items_keyword_search_includes_source_domain(tmp_path, monkeypatch):
