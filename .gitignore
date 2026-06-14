@@ -11,3 +11,4 @@ data/
 backups/
 .superpowers/
 *.pyc
+*.egg-info/
