@@ -10,5 +10,6 @@ playwright-report/
 data/
 backups/
 .superpowers/
+work/
 *.pyc
 *.egg-info/
